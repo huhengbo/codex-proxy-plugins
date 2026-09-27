@@ -386,7 +386,7 @@ $('#clear-events').addEventListener('click', async () => {
   const button = $('#clear-events')
   button.disabled = true
   try {
-    await api('POST', 'api/clear-events', '')
+    await api('POST', 'api/clear-events')
     notice('事件记录已清空。')
     await load()
   }
