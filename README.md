@@ -45,7 +45,7 @@ codex-proxy-plugins/
 
 | 插件 | 当前版本 | 状态 | 说明 |
 | --- | ---: | --- | --- |
-| [额度联动 / huhengbo.quota-sync](plugins/quota-sync/README.md) | 0.3.1 | 可用 | 监控 OpenAI 周额度重置，主动刷新额度观测，并同步清零关联 Client Key 的 weekly 已用金额 |
+| [额度联动 / huhengbo.quota-sync](plugins/quota-sync/README.md) | 0.3.2 | 可用 | 监控 OpenAI 周额度重置，主动刷新额度观测，并同步清零关联 Client Key 的 weekly 已用金额 |
 
 当前 `quota-sync` 最低宿主版本为 `codex-proxy-rs >=3.17.0`，SDK pin 已切到最新主线并由自动同步 workflow 持续维护。
 
@@ -184,7 +184,7 @@ quota-sync 所需的 `key_budgets`、`quota_observations` 与 `key_facts` 已进
 插件版本由各自 plugin.json 决定，例如：
 
 ~~~text
-huhengbo.quota-sync  0.3.1
+huhengbo.quota-sync  0.3.2
 huhengbo.other       1.4.1
 ~~~
 

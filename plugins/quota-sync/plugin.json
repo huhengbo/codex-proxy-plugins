@@ -3,7 +3,7 @@
   "name": "quota-sync",
   "displayName": "额度联动",
   "publisher": "huhengbo",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "监控 OpenAI 账号周额度重置，并安全同步关联 Client Key 的周额度账本",
   "license": "Apache-2.0",
   "author": "huhengbo",
@@ -29,59 +29,68 @@
         "minimum": 1,
         "maximum": 2678400,
         "default": 604800,
-        "description": "周额度窗口长度，默认 604800 秒"
+        "description": "周额度窗口长度，默认 604800 秒",
+        "title": "周额度窗口时长（秒）"
       },
       "quotaRefreshIntervalSeconds": {
         "type": "integer",
         "minimum": 60,
         "maximum": 86400,
         "default": 300,
-        "description": "普通状态下，已有额度观测超过该时长时请求宿主主动刷新"
+        "description": "普通状态下，已有额度观测超过该时长时请求宿主主动刷新",
+        "title": "额度刷新间隔（秒）"
       },
       "confirmationRefreshIntervalSeconds": {
         "type": "integer",
         "minimum": 30,
         "maximum": 3600,
         "default": 60,
-        "description": "发现重置候选后，为取得第二个新样本而主动刷新的最短间隔"
+        "description": "发现重置候选后，为取得第二个新样本而主动刷新的最短间隔",
+        "title": "重置确认刷新间隔（秒）"
       },
       "maxObservationAgeSeconds": {
         "type": "integer",
         "minimum": 60,
         "maximum": 86400,
         "default": 1800,
-        "description": "超过该时间的额度观测不参与重置判断"
+        "description": "超过该时间的额度观测不参与重置判断",
+        "title": "额度观测最大有效期（秒）"
       },
       "boundaryGraceSeconds": {
         "type": "integer",
         "minimum": 0,
         "maximum": 3600,
         "default": 300,
-        "description": "正常重置边界判断允许的时间误差"
+        "description": "正常重置边界判断允许的时间误差",
+        "title": "重置边界容差（秒）"
       },
       "earlyResetDropPercent": {
         "type": "number",
         "minimum": 0,
         "maximum": 100,
         "default": 50,
-        "description": "未到正常边界时，识别活动/提前恢复所需的最低用量下降百分点"
+        "description": "未到正常边界时，识别活动/提前恢复所需的最低用量下降百分点",
+        "title": "提前恢复最低下降百分点"
       },
       "postResetMaxUsedPercent": {
         "type": "number",
         "minimum": 0,
         "maximum": 100,
         "default": 25,
-        "description": "候选重置样本允许的最大已用比例"
+        "description": "候选重置样本允许的最大已用比例",
+        "title": "重置后最大已用比例（%）"
       },
       "confirmationGrowthPercent": {
         "type": "number",
         "minimum": 0,
         "maximum": 100,
         "default": 20,
-        "description": "第二个确认样本相对候选样本允许增长的百分点"
+        "description": "第二个确认样本相对候选样本允许增长的百分点",
+        "title": "二次确认允许增长百分点"
       }
     },
-    "additionalProperties": false
+    "additionalProperties": false,
+    "title": "额度联动检测参数"
   },
   "resources": {
     "web/index.html": "text/html",
@@ -94,7 +103,11 @@
       "schemaVersion": 1,
       "schema": {
         "type": "object",
-        "required": ["accounts", "events", "updatedAtMs"],
+        "required": [
+          "accounts",
+          "events",
+          "updatedAtMs"
+        ],
         "properties": {
           "settings": {
             "type": "object"
@@ -102,12 +115,16 @@
           "accounts": {
             "type": "array",
             "maxItems": 100,
-            "items": { "type": "object" }
+            "items": {
+              "type": "object"
+            }
           },
           "events": {
             "type": "array",
             "maxItems": 64,
-            "items": { "type": "object" }
+            "items": {
+              "type": "object"
+            }
           },
           "updatedAtMs": {
             "type": "integer",

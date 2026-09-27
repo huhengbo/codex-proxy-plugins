@@ -92,6 +92,18 @@ def metadata(name: str) -> dict[str, str]:
         frontend_mode = "static"
     else:
         frontend_mode = "none"
+    configuration_schema = manifest.get("configurationSchema") or {}
+    configuration_properties = configuration_schema.get("properties") or {}
+    if isinstance(configuration_properties, dict):
+        for field_name, field_schema in configuration_properties.items():
+            if not isinstance(field_schema, dict):
+                continue
+            title = field_schema.get("title")
+            if not isinstance(title, str) or not title.strip():
+                errors.append(
+                    f"{name}: configurationSchema.properties.{field_name} 必须声明 title，避免设置页显示机器字段名"
+                )
+
     resources = manifest.get("resources") or {}
     return {
         "name": name,
