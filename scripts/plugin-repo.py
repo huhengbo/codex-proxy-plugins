@@ -100,6 +100,8 @@ def validate_one(name: str) -> list[str]:
     package_name = package.get("name")
     if not isinstance(package_name, str) or not package_name:
         errors.append(f"{name}: Cargo package.name 不能为空")
+    if not (plugin_dir / "backend" / "Cargo.lock").is_file():
+        errors.append(f"{name}: 必须提交 backend/Cargo.lock 以保证可复现构建")
 
     try:
         sdk = sdk_dependency(cargo)
