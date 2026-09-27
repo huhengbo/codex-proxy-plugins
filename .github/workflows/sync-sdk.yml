@@ -4,6 +4,11 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '17 */6 * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'plugins/*/backend/Cargo.toml'
+      - '.github/workflows/sync-sdk.yml'
 
 permissions:
   contents: write
@@ -40,17 +45,22 @@ jobs:
           echo "sdk_rev=$sdk_rev" >> "$GITHUB_OUTPUT"
           echo "Latest upstream main: $sdk_rev"
 
-      - name: Update all plugin SDK pins
+      - name: Update SDK pins and lockfiles
         id: update
         env:
           SDK_REV: ${{ steps.upstream.outputs.sdk_rev }}
         run: |
           python3 scripts/plugin-repo.py sync-sdk "$SDK_REV"
-          if git diff --quiet -- 'plugins/*/backend/Cargo.toml'; then
+          while IFS= read -r plugin; do
+            [[ -n "$plugin" ]] || continue
+            cargo generate-lockfile --manifest-path "plugins/$plugin/backend/Cargo.toml"
+          done < <(python3 scripts/plugin-repo.py list)
+
+          if git diff --quiet -- 'plugins/*/backend/Cargo.toml' 'plugins/*/backend/Cargo.lock'              && [[ -z "$(git ls-files --others --exclude-standard 'plugins/*/backend/Cargo.lock')" ]]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            git diff -- 'plugins/*/backend/Cargo.toml'
+            git status --short -- 'plugins/*/backend/Cargo.toml' 'plugins/*/backend/Cargo.lock'
           fi
 
       - name: Validate latest SDK compatibility
@@ -62,7 +72,8 @@ jobs:
       - name: Keep current pin when latest SDK is incompatible
         if: steps.update.outputs.changed == 'true' && steps.validate.outcome != 'success'
         run: |
-          git restore -- 'plugins/*/backend/Cargo.toml'
+          git restore -- 'plugins/*/backend/Cargo.toml' 'plugins/*/backend/Cargo.lock' 2>/dev/null || true
+          git clean -f -- 'plugins/*/backend/Cargo.lock'
           echo "::warning::Latest codex-proxy-rs main is not yet compatible with all plugins; keeping the current SDK pin."
 
       - name: Commit compatible SDK update to main
@@ -72,6 +83,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add 'plugins/*/backend/Cargo.toml'
-          git commit -m "chore: sync plugin SDK to ${SDK_REV:0:12}"
+          git add 'plugins/*/backend/Cargo.toml' 'plugins/*/backend/Cargo.lock'
+          git commit -m "chore: sync plugin SDK and lockfiles to ${SDK_REV:0:12}"
           git push origin HEAD:main
