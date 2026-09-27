@@ -223,7 +223,7 @@ function renderKeys() {
     const budget = document.createElement('span')
     if (key.budget) {
       const limit = key.budget.weekly_limit_usd === '0' ? '不限' : `$${key.budget.weekly_limit_usd}`
-      budget.textContent = `周额度：$${key.budget.weekly_used_usd} / ${limit}`
+      budget.textContent = `周额度：${key.budget.weekly_used_usd} / ${limit} · 本地重置：${fmtTime(key.budget.weekly_resets_at_ms)}`
     }
     else {
       budget.textContent = '预算不可用'
