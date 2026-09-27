@@ -11,7 +11,7 @@
     <section class="toolbar panel">
       <div>
         <h1>额度联动</h1>
-        <p>OpenAI 周额度重置后，同步清零关联 Client Key 的周额度已用金额。</p>
+        <p>监控 OpenAI 周额度重置，并同步清零明确关联的 Client Key 周已用金额。</p>
       </div>
       <div class="toolbar-actions">
         <label class="switch"><input id="dry-run" type="checkbox"><span>Dry Run</span></label>
@@ -27,7 +27,7 @@
         <div class="section-head">
           <div>
             <h2>OpenAI 账号</h2>
-            <p>选择账号后，在右侧勾选需要同步重置的 Client Key。</p>
+            <p>每个分享 Key 只能关联一个监控账号，避免重复补额度。</p>
           </div>
           <button id="refresh-account" class="secondary" disabled>刷新所选额度</button>
         </div>
@@ -50,8 +50,9 @@
       <div class="section-head">
         <div>
           <h2>最近同步事件</h2>
-          <p>失败结果不会自动重试，避免在结果未知时重复清零新消费。</p>
+          <p>写入结果未知时不会自动重试；prepared 表示需要人工确认宿主实际状态。</p>
         </div>
+        <button id="clear-events" class="secondary">清空事件</button>
       </div>
       <div id="events" class="events empty">暂无事件</div>
     </section>

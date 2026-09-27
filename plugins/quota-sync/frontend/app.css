@@ -36,15 +36,17 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 }
 .account { cursor: pointer; }
 .account.active { outline: 2px solid Highlight; outline-offset: -2px; }
+.key.scope-mismatch { opacity: .65; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .meta { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 12px; opacity: .72; }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; overflow-wrap: anywhere; }
 .badge {
   display: inline-flex; align-items: center; border-radius: 999px; padding: 2px 7px;
   background: color-mix(in srgb, Highlight 15%, transparent); font-size: 11px;
 }
 .badge.warn { background: color-mix(in srgb, orange 18%, transparent); }
 .badge.error { background: color-mix(in srgb, red 18%, transparent); }
+.badge.success { background: color-mix(in srgb, green 18%, transparent); }
 .key { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; }
 .key input { margin-top: 3px; }
 .window-picker { margin-top: 14px; padding: 10px; border-radius: 8px; background: color-mix(in srgb, CanvasText 6%, transparent); }
@@ -52,9 +54,11 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .notice { border-radius: 9px; padding: 10px 12px; background: color-mix(in srgb, Highlight 14%, transparent); }
 .notice.error { background: color-mix(in srgb, red 17%, transparent); }
 .empty { opacity: .6; padding: 18px 4px; }
-.events { display: grid; gap: 8px; margin-top: 12px; }
+.events { display: grid; gap: 10px; margin-top: 12px; }
 .event { border-top: 1px solid color-mix(in srgb, CanvasText 12%, transparent); padding-top: 10px; }
 .event:first-child { border-top: 0; padding-top: 0; }
+.event-keys { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+.event-key { font-size: 11px; padding: 3px 6px; border-radius: 6px; background: color-mix(in srgb, CanvasText 7%, transparent); }
 @media (max-width: 820px) {
   .layout { grid-template-columns: 1fr; }
   .toolbar, .section-head { align-items: flex-start; flex-direction: column; }

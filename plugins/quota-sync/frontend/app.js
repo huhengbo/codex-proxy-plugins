@@ -19,7 +19,7 @@ async function api(method, path, data) {
     throw new Error('插件返回了不支持的内容类型')
   const value = JSON.parse(decoder.decode(reply.body))
   if (reply.status < 200 || reply.status >= 300)
-    throw new Error(value?.error?.message || `插件请求失败（HTTP ${reply.status}）`)
+    throw new Error(value?.error?.message || \`插件请求失败（HTTP ${reply.status}）\`)
   return value
 }
 
@@ -39,9 +39,22 @@ function mapping(accountId, create = false) {
   return value
 }
 
+function ownerOfKey(keyId) {
+  return draft.mappings.find(item => item.clientKeyIds.includes(keyId))?.accountId || null
+}
+
 function weeklyWindows(account) {
   return (account.quota?.windows || [])
     .filter(window => window.window_seconds === snapshot.weeklyWindowSeconds)
+}
+
+function keyScopeAllowsAccount(key, account) {
+  if (!Array.isArray(key.groupIds))
+    return null
+  if (key.groupIds.length === 0)
+    return true
+  const accountGroups = new Set(account.groupIds || [])
+  return key.groupIds.some(groupId => accountGroups.has(groupId))
 }
 
 function fmtTime(ms) {
@@ -49,7 +62,7 @@ function fmtTime(ms) {
 }
 
 function fmtPercent(value) {
-  return Number.isFinite(value) ? `${value.toFixed(1)}%` : '未知'
+  return Number.isFinite(value) ? \`${value.toFixed(1)}%\` : '未知'
 }
 
 function renderAccounts() {
@@ -66,7 +79,7 @@ function renderAccounts() {
     const selected = account.accountId === selectedAccountId
     const map = mapping(account.accountId)
     const card = document.createElement('div')
-    card.className = `account${selected ? ' active' : ''}`
+    card.className = \`account${selected ? ' active' : ''}\`
     card.addEventListener('click', () => {
       selectedAccountId = account.accountId
       render()
@@ -79,17 +92,25 @@ function renderAccounts() {
     id.textContent = account.accountId
     const badge = document.createElement('span')
     badge.className = 'badge'
-    badge.textContent = `${map?.clientKeyIds.length || 0} 个 Key`
+    badge.textContent = \`${map?.clientKeyIds.length || 0} 个 Key\`
     top.append(id, badge)
 
     const meta = document.createElement('div')
     meta.className = 'meta'
     const weekly = windows[0]
     const usage = document.createElement('span')
-    usage.textContent = `周用量：${weekly ? fmtPercent(weekly.used_percent) : '无数据'}`
+    usage.textContent = \`周用量：${weekly ? fmtPercent(weekly.used_percent) : '无数据'}\`
     const reset = document.createElement('span')
-    reset.textContent = `上游重置：${weekly ? fmtTime(weekly.reset_at_ms) : '未知'}`
-    meta.append(usage, reset)
+    reset.textContent = \`上游重置：${weekly ? fmtTime(weekly.reset_at_ms) : '未知'}\`
+    const observed = document.createElement('span')
+    observed.textContent = \`观测：${fmtTime(account.quota?.observed_at_ms)}\`
+    meta.append(usage, reset, observed)
+    if (!account.enabled) {
+      const disabled = document.createElement('span')
+      disabled.className = 'badge warn'
+      disabled.textContent = '账号停用'
+      meta.append(disabled)
+    }
     if (account.runtime?.pending) {
       const pending = document.createElement('span')
       pending.className = 'badge warn'
@@ -127,7 +148,7 @@ function renderWindowPicker(account) {
   for (const window of windows) {
     const option = document.createElement('option')
     option.value = window.key
-    option.textContent = `${window.key} · ${fmtPercent(window.used_percent)} · ${fmtTime(window.reset_at_ms)}`
+    option.textContent = \`${window.key} · ${fmtPercent(window.used_percent)} · ${fmtTime(window.reset_at_ms)}\`
     option.selected = map?.quotaWindowKey === window.key
     select.append(option)
   }
@@ -162,18 +183,26 @@ function renderKeys() {
 
   const selected = new Set(mapping(account.accountId)?.clientKeyIds || [])
   for (const key of snapshot.keys) {
+    const isSelected = selected.has(key.id)
+    const scopeAllows = keyScopeAllowsAccount(key, account)
+    const currentOwner = ownerOfKey(key.id)
+    const ownedElsewhere = currentOwner && currentOwner !== account.accountId
+
     const row = document.createElement('label')
-    row.className = 'key'
+    row.className = \`key${scopeAllows === false ? ' scope-mismatch' : ''}\`
     const checkbox = document.createElement('input')
     checkbox.type = 'checkbox'
-    checkbox.checked = selected.has(key.id)
+    checkbox.checked = isSelected
+    checkbox.disabled = !isSelected && (scopeAllows === false || ownedElsewhere)
     checkbox.addEventListener('change', () => {
       const target = mapping(account.accountId, true)
       const values = new Set(target.clientKeyIds)
-      if (checkbox.checked) values.add(key.id)
-      else values.delete(key.id)
+      if (checkbox.checked)
+        values.add(key.id)
+      else
+        values.delete(key.id)
       target.clientKeyIds = [...values]
-      renderAccounts()
+      render()
     })
 
     const body = document.createElement('div')
@@ -182,7 +211,7 @@ function renderKeys() {
     const name = document.createElement('strong')
     name.textContent = key.name
     const state = document.createElement('span')
-    state.className = 'badge'
+    state.className = key.enabled ? 'badge' : 'badge warn'
     state.textContent = key.enabled ? '启用' : '停用'
     top.append(name, state)
 
@@ -193,16 +222,58 @@ function renderKeys() {
     id.textContent = key.id
     const budget = document.createElement('span')
     if (key.budget) {
-      const limit = key.budget.weekly_limit_usd === '0' ? '不限' : `$${key.budget.weekly_limit_usd}`
-      budget.textContent = `周额度：$${key.budget.weekly_used_usd} / ${limit}`
-    } else {
+      const limit = key.budget.weekly_limit_usd === '0' ? '不限' : \`$${key.budget.weekly_limit_usd}\`
+      budget.textContent = \`周额度：$${key.budget.weekly_used_usd} / ${limit}\`
+    }
+    else {
       budget.textContent = '预算不可用'
     }
-    meta.append(id, budget)
+    const scope = document.createElement('span')
+    if (scopeAllows === null) {
+      scope.className = 'badge warn'
+      scope.textContent = '范围未知'
+    }
+    else if (scopeAllows === false) {
+      scope.className = 'badge error'
+      scope.textContent = '范围不含此账号'
+    }
+    else if ((key.groupIds || []).length === 0) {
+      scope.className = 'badge warn'
+      scope.textContent = 'AllAccounts'
+    }
+    else {
+      scope.className = 'badge success'
+      scope.textContent = '账号组匹配'
+    }
+    meta.append(id, budget, scope)
+
+    if (ownedElsewhere) {
+      const owner = document.createElement('span')
+      owner.className = 'badge warn'
+      owner.textContent = \`已关联 ${currentOwner}\`
+      meta.append(owner)
+    }
+
     body.append(top, meta)
     row.append(checkbox, body)
     root.append(row)
   }
+}
+
+const outcomeLabels = {
+  prepared: '需人工确认',
+  dry_run: 'Dry Run',
+  completed: '完成',
+  partial_failure: '部分失败',
+}
+
+const keyStatusLabels = {
+  pending: '未确认',
+  dry_run: 'Dry Run',
+  reset: '已重置',
+  scope_mismatch: '范围失配',
+  facts_unavailable: 'Key 状态不可用',
+  failed_unknown: '结果未知',
 }
 
 function renderEvents() {
@@ -223,13 +294,24 @@ function renderEvents() {
     const title = document.createElement('strong')
     title.textContent = event.accountId
     const outcome = document.createElement('span')
-    outcome.className = `badge${event.outcome === 'partial_failure' ? ' error' : ''}`
-    outcome.textContent = event.outcome
+    const problem = event.outcome === 'partial_failure' || event.outcome === 'prepared'
+    outcome.className = \`badge${problem ? ' error' : event.outcome === 'completed' ? ' success' : ''}\`
+    outcome.textContent = outcomeLabels[event.outcome] || event.outcome
     top.append(title, outcome)
+
     const meta = document.createElement('div')
     meta.className = 'meta'
-    meta.textContent = `${fmtTime(event.detectedAtMs)} · ${event.kind} · ${fmtPercent(event.previousUsedPercent)} → ${fmtPercent(event.currentUsedPercent)} · ${event.keys.length} 个 Key`
-    item.append(top, meta)
+    meta.textContent = \`${fmtTime(event.detectedAtMs)} · ${event.kind} · ${fmtPercent(event.previousUsedPercent)} → ${fmtPercent(event.currentUsedPercent)}\`
+
+    const keys = document.createElement('div')
+    keys.className = 'event-keys'
+    for (const result of event.keys) {
+      const key = document.createElement('span')
+      key.className = 'event-key mono'
+      key.textContent = \`${result.keyId}: ${keyStatusLabels[result.status] || result.status}\`
+      keys.append(key)
+    }
+    item.append(top, meta, keys)
     root.append(item)
   }
 }
@@ -281,13 +363,31 @@ $('#save').addEventListener('click', async () => {
 })
 
 $('#refresh-account').addEventListener('click', async () => {
-  if (!selectedAccountId) return
+  if (!selectedAccountId)
+    return
   notice('')
   const button = $('#refresh-account')
   button.disabled = true
   try {
     await api('POST', 'api/refresh-account', { accountId: selectedAccountId })
     notice('额度观测已刷新。')
+    await load()
+  }
+  catch (error) {
+    notice(error.message, true)
+  }
+  finally {
+    button.disabled = false
+  }
+})
+
+$('#clear-events').addEventListener('click', async () => {
+  notice('')
+  const button = $('#clear-events')
+  button.disabled = true
+  try {
+    await api('POST', 'api/clear-events', '')
+    notice('事件记录已清空。')
     await load()
   }
   catch (error) {
