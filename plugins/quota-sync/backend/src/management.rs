@@ -6,9 +6,7 @@ use std::{
 use gateway_plugin_sdk::{
     ErrorCode, PluginFault,
     call::{
-        data::{
-            AccountFacts, AccountFactsQuery, ClientKeyFactsQuery, QuotaFacts, QuotaFactsQuery,
-        },
+        data::{AccountFacts, AccountFactsQuery, ClientKeyFactsQuery, QuotaFacts, QuotaFactsQuery},
         host::{ClientKey, KeyListRequest},
         key_budgets::KeyBudget,
         management::{
@@ -131,7 +129,9 @@ async fn snapshot(
     config: &Config,
     call: TypedCall<gateway_plugin_sdk::call::management::ManagementRequest>,
 ) -> ApiResult {
-    let runtime = LoadedRuntime::load(&call.host).await.map_err(ApiError::from)?;
+    let runtime = LoadedRuntime::load(&call.host)
+        .await
+        .map_err(ApiError::from)?;
     let accounts = list_openai_accounts(&call.host)
         .await
         .map_err(ApiError::from)?;
@@ -175,8 +175,8 @@ async fn save_settings(
     config: &Config,
     call: TypedCall<gateway_plugin_sdk::call::management::ManagementRequest>,
 ) -> ApiResult {
-    let settings: ManagedSettings =
-        serde_json::from_slice(&call.payload).map_err(|_| ApiError::invalid("设置不是合法 JSON"))?;
+    let settings: ManagedSettings = serde_json::from_slice(&call.payload)
+        .map_err(|_| ApiError::invalid("设置不是合法 JSON"))?;
     validate_mappings(&settings.mappings).map_err(ApiError::invalid)?;
 
     let accounts = list_openai_accounts(&call.host)
@@ -239,13 +239,12 @@ async fn save_settings(
         }
     }
 
-    let mut runtime = LoadedRuntime::load(&call.host).await.map_err(ApiError::from)?;
-    runtime.value.settings = settings.clone();
-    runtime.value.updated_at_ms = now_ms();
-    runtime
-        .save(&call.host)
+    let mut runtime = LoadedRuntime::load(&call.host)
         .await
         .map_err(ApiError::from)?;
+    runtime.value.settings = settings.clone();
+    runtime.value.updated_at_ms = now_ms();
+    runtime.save(&call.host).await.map_err(ApiError::from)?;
     json_reply(&settings)
 }
 
@@ -285,13 +284,12 @@ async fn clear_events(
     if !call.payload.is_empty() {
         return Err(ApiError::invalid("清空事件不接受请求正文"));
     }
-    let mut runtime = LoadedRuntime::load(&call.host).await.map_err(ApiError::from)?;
-    runtime.value.events.clear();
-    runtime.value.updated_at_ms = now_ms();
-    runtime
-        .save(&call.host)
+    let mut runtime = LoadedRuntime::load(&call.host)
         .await
         .map_err(ApiError::from)?;
+    runtime.value.events.clear();
+    runtime.value.updated_at_ms = now_ms();
+    runtime.save(&call.host).await.map_err(ApiError::from)?;
     json_reply(&json!({ "cleared": true }))
 }
 
