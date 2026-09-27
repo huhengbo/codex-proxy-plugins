@@ -53,7 +53,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
-      - uses: dtolnay/rust-toolchain@1a3a6d54512bee8d516ca16f2c506a20 # 1.97
+      - uses: dtolnay/rust-toolchain@1a3a6d54512beeaffd394f8d516ca16f2c506a20 # 1.97
         with:
           targets: ${{ matrix.target }}
       - name: Validate plugin catalog
