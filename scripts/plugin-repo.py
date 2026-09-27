@@ -5,7 +5,6 @@ import argparse
 import json
 import re
 import sys
-import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +22,45 @@ def plugin_names() -> list[str]:
     )
 
 
+def parse_cargo_manifest(path: Path) -> dict:
+    """Parse the small Cargo.toml subset used by this repository.
+
+    This intentionally avoids Python 3.11's tomllib so release runners with
+    Python 3.10 (notably ubuntu-22.04) can run the repository tooling.
+    Cargo itself remains the authoritative TOML validator during build/check.
+    """
+    cargo: dict[str, dict] = {"package": {}, "dependencies": {}}
+    section = ""
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1].strip()
+            continue
+
+        if section == "package":
+            match = re.fullmatch(r'([A-Za-z0-9_-]+)\s*=\s*"([^"]*)"', line)
+            if match:
+                cargo["package"][match.group(1)] = match.group(2)
+            continue
+
+        if section == "dependencies" and line.startswith("gateway-plugin-sdk"):
+            match = re.fullmatch(r'gateway-plugin-sdk\s*=\s*\{(.*)\}', line)
+            if not match:
+                raise ValueError(
+                    "gateway-plugin-sdk 必须使用单行 inline table 声明"
+                )
+            dependency: dict[str, str] = {}
+            for field, value in re.findall(
+                r'([A-Za-z0-9_-]+)\s*=\s*"([^"]*)"', match.group(1)
+            ):
+                dependency[field] = value
+            cargo["dependencies"]["gateway-plugin-sdk"] = dependency
+
+    return cargo
+
+
 def load(name: str) -> tuple[dict, dict, Path]:
     plugin_dir = PLUGINS / name
     manifest_path = plugin_dir / "plugin.json"
@@ -32,8 +70,7 @@ def load(name: str) -> tuple[dict, dict, Path]:
     if not cargo_path.is_file():
         raise ValueError(f"{name}: 缺少 backend/Cargo.toml")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    with cargo_path.open("rb") as handle:
-        cargo = tomllib.load(handle)
+    cargo = parse_cargo_manifest(cargo_path)
     return manifest, cargo, plugin_dir
 
 
@@ -73,7 +110,7 @@ def validate_one(name: str) -> list[str]:
     errors: list[str] = []
     try:
         manifest, cargo, plugin_dir = load(name)
-    except (ValueError, json.JSONDecodeError, tomllib.TOMLDecodeError) as exc:
+    except (ValueError, json.JSONDecodeError) as exc:
         return [str(exc)]
 
     for field in ("manifestVersion", "publisher", "name", "version", "main", "runtime"):
