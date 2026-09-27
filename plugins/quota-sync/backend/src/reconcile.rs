@@ -217,7 +217,7 @@ async fn log_reset(
         fields: [
             ("kind".to_owned(), json!(kind)),
             ("dry_run".to_owned(), json!(dry_run)),
-            ("account_id".to_owned(), json!(mapping.account_id)),
+            ("account_id".to_owned(), json!(mapping.account_id.as_str())),
             (
                 "target_key_count".to_owned(),
                 json!(mapping.client_key_ids.len()),
