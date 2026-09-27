@@ -27,7 +27,7 @@ pub async fn reconcile(
     let mappings = runtime.value.settings.mappings.clone();
     let dry_run = runtime.value.settings.dry_run;
     let mut dirty = prune_removed_accounts(&mut runtime.value, &mappings);
-    let now_ms = now_ms();
+    let current_now_ms = now_ms();
     let openai_accounts = openai_accounts(&call).await?;
 
     for mapping in &mappings {
@@ -67,7 +67,7 @@ pub async fn reconcile(
             dirty = true;
         }
 
-        let current = match weekly_snapshot(&quota, mapping, config, now_ms) {
+        let current = match weekly_snapshot(&quota, mapping, config, current_now_ms) {
             Ok(value) => value,
             Err(code) => {
                 dirty |= set_error(runtime.value.account_mut(&mapping.account_id), code);
@@ -99,7 +99,7 @@ pub async fn reconcile(
             now_ms,
             &mapping.client_key_ids,
         ));
-        runtime.value.updated_at_ms = now_ms;
+        runtime.value.updated_at_ms = current_now_ms;
         runtime.save(&call.host).await?;
         dirty = false;
 
