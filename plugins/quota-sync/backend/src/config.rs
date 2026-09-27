@@ -9,6 +9,7 @@ const DEFAULT_WEEKLY_WINDOW_SECONDS: u64 = 7 * 24 * 60 * 60;
 pub struct Config {
     pub weekly_window_seconds: u64,
     pub quota_refresh_interval_seconds: u64,
+    pub confirmation_refresh_interval_seconds: u64,
     pub max_observation_age_seconds: u64,
     pub boundary_grace_seconds: u64,
     pub early_reset_drop_percent: f64,
@@ -21,6 +22,7 @@ impl Default for Config {
         Self {
             weekly_window_seconds: DEFAULT_WEEKLY_WINDOW_SECONDS,
             quota_refresh_interval_seconds: 5 * 60,
+            confirmation_refresh_interval_seconds: 60,
             max_observation_age_seconds: 30 * 60,
             boundary_grace_seconds: 5 * 60,
             early_reset_drop_percent: 50.0,
@@ -46,14 +48,18 @@ impl Config {
     ///
     /// 配置中的窗口、刷新周期或百分比阈值非法时返回错误。
     pub fn validate(&self) -> Result<(), String> {
-        if self.weekly_window_seconds == 0 {
-            return Err("weeklyWindowSeconds 必须大于 0".to_owned());
-        }
-        if self.quota_refresh_interval_seconds == 0 {
-            return Err("quotaRefreshIntervalSeconds 必须大于 0".to_owned());
-        }
-        if self.max_observation_age_seconds == 0 {
-            return Err("maxObservationAgeSeconds 必须大于 0".to_owned());
+        for (name, value) in [
+            ("weeklyWindowSeconds", self.weekly_window_seconds),
+            ("quotaRefreshIntervalSeconds", self.quota_refresh_interval_seconds),
+            (
+                "confirmationRefreshIntervalSeconds",
+                self.confirmation_refresh_interval_seconds,
+            ),
+            ("maxObservationAgeSeconds", self.max_observation_age_seconds),
+        ] {
+            if value == 0 {
+                return Err(format!("{name} 必须大于 0"));
+            }
         }
         for (name, value) in [
             ("earlyResetDropPercent", self.early_reset_drop_percent),
@@ -72,9 +78,10 @@ impl Config {
 ///
 /// # Errors
 ///
-/// 映射包含重复账号、重复 Key、空标识或没有关联 Key 时返回错误。
+/// 映射包含重复账号、跨账号重复 Key、空标识或没有关联 Key 时返回错误。
 pub(crate) fn validate_mappings(mappings: &[AccountMapping]) -> Result<(), String> {
     let mut accounts = BTreeSet::new();
+    let mut assigned_keys = BTreeSet::new();
     for mapping in mappings {
         if mapping.account_id.trim().is_empty() {
             return Err("accountId 不能为空".to_owned());
@@ -88,15 +95,20 @@ pub(crate) fn validate_mappings(mappings: &[AccountMapping]) -> Result<(), Strin
         if !accounts.insert(mapping.account_id.as_str()) {
             return Err(format!("账号 {} 重复配置", mapping.account_id));
         }
-        let mut keys = BTreeSet::new();
+        let mut local_keys = BTreeSet::new();
         for key_id in &mapping.client_key_ids {
             if key_id.trim().is_empty() {
                 return Err(format!("账号 {} 包含空 Client Key ID", mapping.account_id));
             }
-            if !keys.insert(key_id.as_str()) {
+            if !local_keys.insert(key_id.as_str()) {
                 return Err(format!(
-                    "账号 {} 包含重复 Client Key ID",
-                    mapping.account_id
+                    "账号 {} 包含重复 Client Key ID：{}",
+                    mapping.account_id, key_id
+                ));
+            }
+            if !assigned_keys.insert(key_id.as_str()) {
+                return Err(format!(
+                    "Client Key {key_id} 已关联其他监控账号；一个 Key 只能关联一个账号"
                 ));
             }
         }
@@ -118,14 +130,27 @@ pub(crate) fn validate_mappings(mappings: &[AccountMapping]) -> Result<(), Strin
 mod tests {
     use super::{AccountMapping, Config, validate_mappings};
 
+    fn mapping(account: &str, key: &str) -> AccountMapping {
+        AccountMapping {
+            account_id: account.to_owned(),
+            client_key_ids: vec![key.to_owned()],
+            quota_window_key: None,
+        }
+    }
+
     #[test]
     fn duplicate_account_should_be_rejected() {
-        let mapping = AccountMapping {
-            account_id: "acct_a".to_owned(),
-            client_key_ids: vec!["key_a".to_owned()],
-            quota_window_key: None,
-        };
-        assert!(validate_mappings(&[mapping.clone(), mapping]).is_err());
+        let value = mapping("acct_a", "key_a");
+        assert!(validate_mappings(&[value.clone(), value]).is_err());
+    }
+
+    #[test]
+    fn one_key_cannot_follow_multiple_accounts() {
+        assert!(validate_mappings(&[
+            mapping("acct_a", "key_shared"),
+            mapping("acct_b", "key_shared"),
+        ])
+        .is_err());
     }
 
     #[test]

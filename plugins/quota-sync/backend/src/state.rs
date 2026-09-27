@@ -56,6 +56,8 @@ pub struct AccountRuntime {
     pub pending: Option<PendingReset>,
     #[serde(default)]
     pub last_error: Option<String>,
+    #[serde(default)]
+    pub last_refresh_attempt_ms: Option<i64>,
 }
 
 impl AccountRuntime {
@@ -65,6 +67,7 @@ impl AccountRuntime {
             baseline: None,
             pending: None,
             last_error: None,
+            last_refresh_attempt_ms: None,
         }
     }
 }
@@ -115,9 +118,77 @@ pub struct SyncEvent {
     pub keys: Vec<KeyResetResult>,
 }
 
+impl SyncEvent {
+    pub fn prepared(
+        id: String,
+        account_id: String,
+        confirmed: &ConfirmedReset,
+        detected_at_ms: i64,
+        key_ids: &[String],
+    ) -> Self {
+        Self {
+            id,
+            account_id,
+            kind: confirmed.kind,
+            detected_at_ms,
+            previous_used_percent: confirmed.before.used_percent,
+            current_used_percent: confirmed.after.used_percent,
+            previous_reset_at_ms: confirmed.before.reset_at_ms,
+            current_reset_at_ms: confirmed.after.reset_at_ms,
+            outcome: ResetOutcome::Prepared,
+            keys: key_ids
+                .iter()
+                .map(|key_id| KeyResetResult {
+                    key_id: key_id.clone(),
+                    status: KeyResetStatus::Pending,
+                })
+                .collect(),
+        }
+    }
+
+    pub fn set_all_dry_run(&mut self) {
+        for key in &mut self.keys {
+            key.status = KeyResetStatus::DryRun;
+        }
+        self.outcome = ResetOutcome::DryRun;
+    }
+
+    pub fn set_key_status(&mut self, key_id: &str, status: KeyResetStatus) {
+        if let Some(key) = self.keys.iter_mut().find(|key| key.key_id == key_id) {
+            key.status = status;
+        }
+        self.recompute_outcome();
+    }
+
+    fn recompute_outcome(&mut self) {
+        if self
+            .keys
+            .iter()
+            .any(|key| key.status == KeyResetStatus::Pending)
+        {
+            self.outcome = ResetOutcome::Prepared;
+        } else if self
+            .keys
+            .iter()
+            .all(|key| key.status == KeyResetStatus::DryRun)
+        {
+            self.outcome = ResetOutcome::DryRun;
+        } else if self
+            .keys
+            .iter()
+            .all(|key| key.status == KeyResetStatus::Reset)
+        {
+            self.outcome = ResetOutcome::Completed;
+        } else {
+            self.outcome = ResetOutcome::PartialFailure;
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ResetOutcome {
+    Prepared,
     DryRun,
     Completed,
     PartialFailure,
@@ -133,8 +204,11 @@ pub struct KeyResetResult {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum KeyResetStatus {
+    Pending,
     DryRun,
     Reset,
+    ScopeMismatch,
+    FactsUnavailable,
     FailedUnknown,
 }
 
@@ -209,11 +283,55 @@ impl RuntimeState {
         self.accounts.last_mut().expect("account was just inserted")
     }
 
+    pub fn event_mut(&mut self, event_id: &str) -> Option<&mut SyncEvent> {
+        self.events.iter_mut().find(|event| event.id == event_id)
+    }
+
+    pub fn contains_event(&self, event_id: &str) -> bool {
+        self.events.iter().any(|event| event.id == event_id)
+    }
+
     pub fn push_event(&mut self, event: SyncEvent) {
         self.events.push(event);
         if self.events.len() > MAX_EVENTS {
             let overflow = self.events.len() - MAX_EVENTS;
             drop(self.events.drain(..overflow));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        ConfirmedReset, KeyResetStatus, ResetKind, ResetOutcome, SyncEvent, WindowSnapshot,
+    };
+
+    fn snapshot(observed_at_ms: i64, used_percent: f64) -> WindowSnapshot {
+        WindowSnapshot {
+            window_key: "weekly".to_owned(),
+            observed_at_ms,
+            used_percent,
+            reset_at_ms: Some(10_000),
+        }
+    }
+
+    #[test]
+    fn event_stays_prepared_until_every_key_has_a_result() {
+        let confirmed = ConfirmedReset {
+            kind: ResetKind::Boundary,
+            before: snapshot(1, 80.0),
+            after: snapshot(2, 1.0),
+        };
+        let mut event = SyncEvent::prepared(
+            "event".to_owned(),
+            "acct".to_owned(),
+            &confirmed,
+            2,
+            &["key_a".to_owned(), "key_b".to_owned()],
+        );
+        event.set_key_status("key_a", KeyResetStatus::Reset);
+        assert_eq!(event.outcome, ResetOutcome::Prepared);
+        event.set_key_status("key_b", KeyResetStatus::Reset);
+        assert_eq!(event.outcome, ResetOutcome::Completed);
     }
 }

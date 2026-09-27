@@ -8,6 +8,7 @@ mod management;
 mod manifest;
 mod reconcile;
 mod reset;
+mod scope;
 mod state;
 
 pub use app::plugin;

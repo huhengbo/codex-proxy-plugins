@@ -1,56 +1,38 @@
 use gateway_plugin_sdk::{
-    call::key_budgets::{BudgetPeriod, ResetKeyBudgetRequest},
+    call::{
+        data::ClientKeyFactsQuery,
+        key_budgets::{BudgetPeriod, ResetKeyBudgetRequest},
+    },
     client::HostClient,
 };
 
-use crate::state::{KeyResetResult, KeyResetStatus, ResetOutcome};
+use crate::{
+    scope::key_scope_allows_account,
+    state::KeyResetStatus,
+};
 
-pub struct ResetExecution {
-    pub outcome: ResetOutcome,
-    pub keys: Vec<KeyResetResult>,
-}
-
-/// 对一次已确认的周额度重置执行所有关联 Key 的同步动作。
+/// 对单个 Key 执行一次 weekly reset。
 ///
-/// SDK 明确规定结果未知时不能盲目重试，因此单个 Key 的失败只记录结果；本次检测事件
-/// 仍会推进 baseline，不在下一轮 maintenance 自动重复清零。
-pub async fn reset_weekly_keys(
+/// 写操作返回错误时不能判断宿主是否已经提交，因此统一记为 FailedUnknown，调用方不得自动重试。
+pub async fn reset_weekly_key(
     host: &HostClient,
-    key_ids: &[String],
-    dry_run: bool,
-) -> ResetExecution {
-    if dry_run {
-        return ResetExecution {
-            outcome: ResetOutcome::DryRun,
-            keys: key_ids
-                .iter()
-                .map(|key_id| KeyResetResult {
-                    key_id: key_id.clone(),
-                    status: KeyResetStatus::DryRun,
-                })
-                .collect(),
-        };
-    }
-
-    let mut keys = Vec::with_capacity(key_ids.len());
-    for key_id in key_ids {
-        keys.push(KeyResetResult {
-            key_id: key_id.clone(),
-            status: reset_one_weekly_key(host, key_id).await,
-        });
-    }
-    let outcome = if keys
-        .iter()
-        .all(|result| result.status == KeyResetStatus::Reset)
+    account_group_ids: &[String],
+    key_id: &str,
+) -> KeyResetStatus {
+    let facts = match host
+        .key_facts(ClientKeyFactsQuery {
+            client_key_id: key_id.to_owned(),
+        })
+        .await
     {
-        ResetOutcome::Completed
-    } else {
-        ResetOutcome::PartialFailure
+        Ok(facts) => facts,
+        Err(_) => return KeyResetStatus::FactsUnavailable,
     };
-    ResetExecution { outcome, keys }
-}
 
-async fn reset_one_weekly_key(host: &HostClient, key_id: &str) -> KeyResetStatus {
+    if !key_scope_allows_account(&facts.group_ids, account_group_ids) {
+        return KeyResetStatus::ScopeMismatch;
+    }
+
     match host
         .reset_key_budget(ResetKeyBudgetRequest {
             client_key_id: key_id.to_owned(),

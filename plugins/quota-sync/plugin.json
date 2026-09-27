@@ -3,12 +3,12 @@
   "name": "quota-sync",
   "displayName": "额度联动",
   "publisher": "huhengbo",
-  "version": "0.2.0",
-  "description": "监控 OpenAI 账号周额度重置，并同步关联 Client Key 的周额度账本",
+  "version": "0.3.0",
+  "description": "监控 OpenAI 账号周额度重置，并安全同步关联 Client Key 的周额度账本",
   "license": "Apache-2.0",
   "author": "huhengbo",
   "engines": {
-    "codex-proxy-rs": ">=3.16.0, <4.0.0"
+    "codex-proxy-rs": ">=3.17.0, <4.0.0"
   },
   "main": "bin/plugin",
   "runtime": "trustedProcess",
@@ -36,7 +36,14 @@
         "minimum": 60,
         "maximum": 86400,
         "default": 300,
-        "description": "已有额度观测超过该时长时请求宿主主动刷新"
+        "description": "普通状态下，已有额度观测超过该时长时请求宿主主动刷新"
+      },
+      "confirmationRefreshIntervalSeconds": {
+        "type": "integer",
+        "minimum": 30,
+        "maximum": 3600,
+        "default": 60,
+        "description": "发现重置候选后，为取得第二个新样本而主动刷新的最短间隔"
       },
       "maxObservationAgeSeconds": {
         "type": "integer",
