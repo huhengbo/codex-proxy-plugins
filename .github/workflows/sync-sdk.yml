@@ -7,7 +7,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'plugins/*/backend/Cargo.toml'
+      - 'plugins/*/backend/**'
       - '.github/workflows/sync-sdk.yml'
 
 permissions:
@@ -74,7 +74,7 @@ jobs:
         run: |
           git restore -- 'plugins/*/backend/Cargo.toml' 'plugins/*/backend/Cargo.lock' 2>/dev/null || true
           git clean -f -- 'plugins/*/backend/Cargo.lock'
-          echo "::warning::Latest codex-proxy-rs main is not yet compatible with all plugins; keeping the current SDK pin."
+          echo "::warning::SDK/lockfile candidate did not pass all plugin checks; keeping the current committed state."
 
       - name: Commit compatible SDK update to main
         if: steps.update.outputs.changed == 'true' && steps.validate.outcome == 'success'
