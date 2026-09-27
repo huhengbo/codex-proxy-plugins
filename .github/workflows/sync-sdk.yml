@@ -1,0 +1,77 @@
+name: Sync Plugin SDK
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */6 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-plugin-sdk-main
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      RUST_MIN_STACK: 16777216
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - uses: dtolnay/rust-toolchain@1a3a6d54512beeaffd394f8d516ca16f2c506a20 # 1.97
+        with:
+          components: rustfmt,clippy
+
+      - name: Resolve latest upstream SDK commit
+        id: upstream
+        run: |
+          sdk_rev="$(git ls-remote https://github.com/zyycn/codex-proxy-rs.git refs/heads/main | awk '{print $1}')"
+          test -n "$sdk_rev"
+          echo "sdk_rev=$sdk_rev" >> "$GITHUB_OUTPUT"
+          echo "Latest upstream main: $sdk_rev"
+
+      - name: Update all plugin SDK pins
+        id: update
+        env:
+          SDK_REV: ${{ steps.upstream.outputs.sdk_rev }}
+        run: |
+          python3 scripts/plugin-repo.py sync-sdk "$SDK_REV"
+          if git diff --quiet -- 'plugins/*/backend/Cargo.toml'; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff -- 'plugins/*/backend/Cargo.toml'
+          fi
+
+      - name: Validate latest SDK compatibility
+        if: steps.update.outputs.changed == 'true'
+        id: validate
+        continue-on-error: true
+        run: bash scripts/check-plugins
+
+      - name: Keep current pin when latest SDK is incompatible
+        if: steps.update.outputs.changed == 'true' && steps.validate.outcome != 'success'
+        run: |
+          git restore -- 'plugins/*/backend/Cargo.toml'
+          echo "::warning::Latest codex-proxy-rs main is not yet compatible with all plugins; keeping the current SDK pin."
+
+      - name: Commit compatible SDK update to main
+        if: steps.update.outputs.changed == 'true' && steps.validate.outcome == 'success'
+        env:
+          SDK_REV: ${{ steps.upstream.outputs.sdk_rev }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add 'plugins/*/backend/Cargo.toml'
+          git commit -m "chore: sync plugin SDK to ${SDK_REV:0:12}"
+          git push origin HEAD:main
