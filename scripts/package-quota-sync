@@ -18,4 +18,5 @@ cargo build --release --target "$plugin_target" --manifest-path plugins/quota-sy
   --manifest plugins/quota-sync/plugin.json \
   --binary "plugins/quota-sync/backend/target/$plugin_target/release/codex-proxy-plugin-quota-sync" \
   --target "$plugin_target" \
+  --resource-map web=frontend \
   --output-dir dist

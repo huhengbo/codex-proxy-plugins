@@ -24,11 +24,13 @@ pub async fn reconcile(
     call: TypedCall<Empty>,
 ) -> Result<TypedReply<Empty>, PluginFault> {
     let mut runtime = LoadedRuntime::load(&call.host).await?;
-    let mut dirty = prune_removed_accounts(&mut runtime.value, config);
+    let mappings = runtime.value.settings.mappings.clone();
+    let dry_run = runtime.value.settings.dry_run;
+    let mut dirty = prune_removed_accounts(&mut runtime.value, &mappings);
     let now_ms = now_ms();
     let openai_accounts = openai_account_ids(&call).await?;
 
-    for mapping in &config.mappings {
+    for mapping in &mappings {
         if !openai_accounts.contains(mapping.account_id.as_str()) {
             dirty |= set_error(
                 runtime.value.account_mut(&mapping.account_id),
@@ -36,19 +38,11 @@ pub async fn reconcile(
             );
             continue;
         }
-        let quota = match call
-            .host
-            .quota_facts(QuotaFactsQuery {
-                account_id: mapping.account_id.clone(),
-            })
-            .await
-        {
+
+        let quota = match current_quota(&call, &mapping.account_id, config, now_ms).await {
             Ok(value) => value,
-            Err(_) => {
-                dirty |= set_error(
-                    runtime.value.account_mut(&mapping.account_id),
-                    "quota_unavailable",
-                );
+            Err(code) => {
+                dirty |= set_error(runtime.value.account_mut(&mapping.account_id), code);
                 continue;
             }
         };
@@ -72,7 +66,7 @@ pub async fn reconcile(
             continue;
         };
         let execution =
-            reset::reset_weekly_keys(&call.host, &mapping.client_key_ids, config.dry_run).await;
+            reset::reset_weekly_keys(&call.host, &mapping.client_key_ids, dry_run).await;
         let event_id = event_id(&mapping.account_id, confirmed.kind, &confirmed.after);
         runtime.value.push_event(SyncEvent {
             id: event_id,
@@ -87,7 +81,7 @@ pub async fn reconcile(
             keys: execution.keys,
         });
         dirty = true;
-        log_reset(&call, mapping, confirmed.kind, config.dry_run).await;
+        log_reset(&call, mapping, confirmed.kind, dry_run).await;
     }
 
     if dirty {
@@ -95,6 +89,30 @@ pub async fn reconcile(
         runtime.save(&call.host).await?;
     }
     Ok(TypedReply::new(Empty {}))
+}
+
+async fn current_quota(
+    call: &TypedCall<Empty>,
+    account_id: &str,
+    config: &Config,
+    now_ms: i64,
+) -> Result<QuotaFacts, &'static str> {
+    let query = QuotaFactsQuery {
+        account_id: account_id.to_owned(),
+    };
+    let cached = call.host.quota_facts(query.clone()).await.ok();
+    let refresh_due = cached.as_ref().is_none_or(|quota| {
+        quota.observed_at_ms.is_none_or(|observed_at| {
+            now_ms.saturating_sub(observed_at) >= millis(config.quota_refresh_interval_seconds)
+        })
+    });
+
+    if refresh_due
+        && let Ok(fresh) = call.host.refresh_account_quota(query).await
+    {
+        return Ok(fresh);
+    }
+    cached.ok_or("quota_unavailable")
 }
 
 async fn openai_account_ids(call: &TypedCall<Empty>) -> Result<BTreeSet<String>, PluginFault> {
@@ -168,9 +186,8 @@ fn snapshot(window: &QuotaWindowFacts, observed_at_ms: i64) -> Result<WindowSnap
     })
 }
 
-fn prune_removed_accounts(state: &mut RuntimeState, config: &Config) -> bool {
-    let configured = config
-        .mappings
+fn prune_removed_accounts(state: &mut RuntimeState, mappings: &[AccountMapping]) -> bool {
+    let configured = mappings
         .iter()
         .map(|mapping| mapping.account_id.as_str())
         .collect::<BTreeSet<_>>();

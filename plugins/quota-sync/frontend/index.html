@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>额度联动</title>
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body>
+  <main class="page">
+    <section class="toolbar panel">
+      <div>
+        <h1>额度联动</h1>
+        <p>OpenAI 周额度重置后，同步清零关联 Client Key 的周额度已用金额。</p>
+      </div>
+      <div class="toolbar-actions">
+        <label class="switch"><input id="dry-run" type="checkbox"><span>Dry Run</span></label>
+        <button id="reload" class="secondary">重新加载</button>
+        <button id="save">保存映射</button>
+      </div>
+    </section>
+
+    <div id="notice" class="notice" hidden></div>
+
+    <section class="layout">
+      <div class="panel">
+        <div class="section-head">
+          <div>
+            <h2>OpenAI 账号</h2>
+            <p>选择账号后，在右侧勾选需要同步重置的 Client Key。</p>
+          </div>
+          <button id="refresh-account" class="secondary" disabled>刷新所选额度</button>
+        </div>
+        <div id="accounts" class="account-list"></div>
+      </div>
+
+      <div class="panel">
+        <div class="section-head">
+          <div>
+            <h2>关联 Client Key</h2>
+            <p id="selected-account">尚未选择账号</p>
+          </div>
+        </div>
+        <div id="window-picker" class="window-picker" hidden></div>
+        <div id="keys" class="key-list empty">请选择左侧账号</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section-head">
+        <div>
+          <h2>最近同步事件</h2>
+          <p>失败结果不会自动重试，避免在结果未知时重复清零新消费。</p>
+        </div>
+      </div>
+      <div id="events" class="events empty">暂无事件</div>
+    </section>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
