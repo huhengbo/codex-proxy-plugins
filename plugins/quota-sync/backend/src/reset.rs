@@ -6,10 +6,7 @@ use gateway_plugin_sdk::{
     client::HostClient,
 };
 
-use crate::{
-    scope::key_scope_allows_account,
-    state::KeyResetStatus,
-};
+use crate::{scope::key_scope_allows_account, state::KeyResetStatus};
 
 /// 对单个 Key 执行一次 weekly reset。
 ///
