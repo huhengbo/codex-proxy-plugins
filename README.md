@@ -57,7 +57,7 @@ codex-proxy-plugins/
 - 目录名必须与 plugin.json 的 name 一致。
 - 插件 ID 为 publisher.name，仓库内不得重复。
 - plugin.json.version 必须与 backend/Cargo.toml 的 package.version 一致。
-- 每个插件仍以完整 commit SHA 固定 gateway-plugin-sdk，保证构建可复现；仓库的 `Sync Plugin SDK` workflow 每 6 小时尝试同步到 `codex-proxy-rs/main` 最新 commit。只有全部自定义插件检查通过才会直接提交到本仓库 `main`，不兼容时保留当前 pin。
+- 所有自定义插件统一使用同一个 `gateway-plugin-sdk` commit，并以完整 SHA 固定以保证构建可复现。仓库的 `Sync Plugin SDK` workflow 每 6 小时尝试同步到 `codex-proxy-rs/main` 最新 commit；只有全部插件检查通过才会直接提交到本仓库 `main`，不兼容时保留当前 pin。
 - 打包时必须使用与该插件 SDK commit 相同的 cpr-plugin。
 - 插件 README 负责说明权限、宿主兼容范围、使用方式和已知限制。
 - 前端资源统一使用 web/ 包路径。静态页面可以直接放 frontend/；需要构建的前端在 frontend/package.json 中固定 pnpm 版本并提交 lockfile。
@@ -149,7 +149,7 @@ bash scripts/package-all
 .tools/cpr-plugin-<sdk-commit>/
 ~~~
 
-打包仍以每个插件 Cargo.toml 中实际固定的 SDK commit 为准；自动同步会统一尝试最新上游 main，但只有在所有插件兼容时才更新主分支。
+CI 会拒绝自定义插件使用不同 SDK commit。打包仍读取各插件 Cargo.toml 中的固定值，但正常情况下这些值必须完全一致；自动同步会统一更新全部插件。
 
 当前打包目标沿用上游支持范围：
 
