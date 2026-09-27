@@ -19,7 +19,7 @@ async function api(method, path, data) {
     throw new Error('插件返回了不支持的内容类型')
   const value = JSON.parse(decoder.decode(reply.body))
   if (reply.status < 200 || reply.status >= 300)
-    throw new Error(value?.error?.message || \`插件请求失败（HTTP ${reply.status}）\`)
+    throw new Error(value?.error?.message || `插件请求失败（HTTP ${reply.status}）`)
   return value
 }
 
@@ -62,7 +62,7 @@ function fmtTime(ms) {
 }
 
 function fmtPercent(value) {
-  return Number.isFinite(value) ? \`${value.toFixed(1)}%\` : '未知'
+  return Number.isFinite(value) ? `${value.toFixed(1)}%` : '未知'
 }
 
 function renderAccounts() {
@@ -79,7 +79,7 @@ function renderAccounts() {
     const selected = account.accountId === selectedAccountId
     const map = mapping(account.accountId)
     const card = document.createElement('div')
-    card.className = \`account${selected ? ' active' : ''}\`
+    card.className = `account${selected ? ' active' : ''}`
     card.addEventListener('click', () => {
       selectedAccountId = account.accountId
       render()
@@ -92,18 +92,18 @@ function renderAccounts() {
     id.textContent = account.accountId
     const badge = document.createElement('span')
     badge.className = 'badge'
-    badge.textContent = \`${map?.clientKeyIds.length || 0} 个 Key\`
+    badge.textContent = `${map?.clientKeyIds.length || 0} 个 Key`
     top.append(id, badge)
 
     const meta = document.createElement('div')
     meta.className = 'meta'
     const weekly = windows[0]
     const usage = document.createElement('span')
-    usage.textContent = \`周用量：${weekly ? fmtPercent(weekly.used_percent) : '无数据'}\`
+    usage.textContent = `周用量：${weekly ? fmtPercent(weekly.used_percent) : '无数据'}`
     const reset = document.createElement('span')
-    reset.textContent = \`上游重置：${weekly ? fmtTime(weekly.reset_at_ms) : '未知'}\`
+    reset.textContent = `上游重置：${weekly ? fmtTime(weekly.reset_at_ms) : '未知'}`
     const observed = document.createElement('span')
-    observed.textContent = \`观测：${fmtTime(account.quota?.observed_at_ms)}\`
+    observed.textContent = `观测：${fmtTime(account.quota?.observed_at_ms)}`
     meta.append(usage, reset, observed)
     if (!account.enabled) {
       const disabled = document.createElement('span')
@@ -148,7 +148,7 @@ function renderWindowPicker(account) {
   for (const window of windows) {
     const option = document.createElement('option')
     option.value = window.key
-    option.textContent = \`${window.key} · ${fmtPercent(window.used_percent)} · ${fmtTime(window.reset_at_ms)}\`
+    option.textContent = `${window.key} · ${fmtPercent(window.used_percent)} · ${fmtTime(window.reset_at_ms)}`
     option.selected = map?.quotaWindowKey === window.key
     select.append(option)
   }
@@ -189,7 +189,7 @@ function renderKeys() {
     const ownedElsewhere = currentOwner && currentOwner !== account.accountId
 
     const row = document.createElement('label')
-    row.className = \`key${scopeAllows === false ? ' scope-mismatch' : ''}\`
+    row.className = `key${scopeAllows === false ? ' scope-mismatch' : ''}`
     const checkbox = document.createElement('input')
     checkbox.type = 'checkbox'
     checkbox.checked = isSelected
@@ -222,8 +222,8 @@ function renderKeys() {
     id.textContent = key.id
     const budget = document.createElement('span')
     if (key.budget) {
-      const limit = key.budget.weekly_limit_usd === '0' ? '不限' : \`$${key.budget.weekly_limit_usd}\`
-      budget.textContent = \`周额度：$${key.budget.weekly_used_usd} / ${limit}\`
+      const limit = key.budget.weekly_limit_usd === '0' ? '不限' : `$${key.budget.weekly_limit_usd}`
+      budget.textContent = `周额度：$${key.budget.weekly_used_usd} / ${limit}`
     }
     else {
       budget.textContent = '预算不可用'
@@ -250,7 +250,7 @@ function renderKeys() {
     if (ownedElsewhere) {
       const owner = document.createElement('span')
       owner.className = 'badge warn'
-      owner.textContent = \`已关联 ${currentOwner}\`
+      owner.textContent = `已关联 ${currentOwner}`
       meta.append(owner)
     }
 
@@ -295,20 +295,20 @@ function renderEvents() {
     title.textContent = event.accountId
     const outcome = document.createElement('span')
     const problem = event.outcome === 'partial_failure' || event.outcome === 'prepared'
-    outcome.className = \`badge${problem ? ' error' : event.outcome === 'completed' ? ' success' : ''}\`
+    outcome.className = `badge${problem ? ' error' : event.outcome === 'completed' ? ' success' : ''}`
     outcome.textContent = outcomeLabels[event.outcome] || event.outcome
     top.append(title, outcome)
 
     const meta = document.createElement('div')
     meta.className = 'meta'
-    meta.textContent = \`${fmtTime(event.detectedAtMs)} · ${event.kind} · ${fmtPercent(event.previousUsedPercent)} → ${fmtPercent(event.currentUsedPercent)}\`
+    meta.textContent = `${fmtTime(event.detectedAtMs)} · ${event.kind} · ${fmtPercent(event.previousUsedPercent)} → ${fmtPercent(event.currentUsedPercent)}`
 
     const keys = document.createElement('div')
     keys.className = 'event-keys'
     for (const result of event.keys) {
       const key = document.createElement('span')
       key.className = 'event-key mono'
-      key.textContent = \`${result.keyId}: ${keyStatusLabels[result.status] || result.status}\`
+      key.textContent = `${result.keyId}: ${keyStatusLabels[result.status] || result.status}`
       keys.append(key)
     }
     item.append(top, meta, keys)
