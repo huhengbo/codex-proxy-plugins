@@ -56,6 +56,7 @@ codex-proxy-plugins/
 - 目录名必须与 plugin.json 的 name 一致。
 - 插件 ID 为 publisher.name，仓库内不得重复。
 - plugin.json.version 必须与 backend/Cargo.toml 的 package.version 一致。
+- 每个插件必须提交 backend/Cargo.lock；CI、测试和发布构建统一使用 `--locked`。
 - 所有自定义插件统一使用同一个 `gateway-plugin-sdk` commit，并以完整 SHA 固定以保证构建可复现。仓库的 `Sync Plugin SDK` workflow 每 6 小时尝试同步到 `codex-proxy-rs/main` 最新 commit；只有全部插件检查通过才会直接提交到本仓库 `main`，不兼容时保留当前 pin。
 - 打包时必须使用与该插件 SDK commit 相同的 cpr-plugin。
 - 插件 README 负责说明权限、宿主兼容范围、使用方式和已知限制。
@@ -73,6 +74,7 @@ plugins/<plugin-name>/
 ├── README.md
 ├── backend/
 │   ├── Cargo.toml
+│   ├── Cargo.lock
 │   └── src/
 └── frontend/      可选
 ~~~
@@ -103,7 +105,7 @@ bash scripts/check-plugins
 CI 分成两个 Job：
 
 1. Official example：继续检查上游 examples/workbench，避免 Fork 时把参考实现改坏。
-2. Custom plugins：校验所有插件的目录、ID、版本和 SDK pin，再逐插件执行 Rust fmt、clippy、test；存在前端时自动执行对应前端检查。
+2. Custom plugins：校验所有插件的目录、ID、版本、SDK pin 和 Cargo.lock，再逐插件执行 Rust fmt、clippy、test；存在前端时自动执行对应前端检查，并实际打一个 Linux x86_64 安装包作为 smoke test。
 
 CI 同时检查通用脚本语法。后续新增 plugins/<name>/ 后会自动纳入。日常开发和自动更新均以 `main` 为默认分支。
 
@@ -115,6 +117,7 @@ CI 同时检查通用脚本语法。后续新增 plugins/<name>/ 后会自动纳
 Sync Plugin SDK
   → 读取上游 main HEAD
   → 更新 plugins/*/backend/Cargo.toml
+  → 重新生成 plugins/*/backend/Cargo.lock
   → 运行全部自定义插件检查
   → 全部通过：直接提交到 main
   → 任一失败：恢复旧 pin，不修改 main
