@@ -7,7 +7,7 @@
 
 基于 zyycn/codex-proxy-plugins 维护的个人 Codex Proxy 插件集合。
 
-[![CI](https://github.com/huhengbo/codex-proxy-plugins/actions/workflows/ci.yml/badge.svg?branch=custom-plugins)](https://github.com/huhengbo/codex-proxy-plugins/actions/workflows/ci.yml)
+[![CI](https://github.com/huhengbo/codex-proxy-plugins/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/huhengbo/codex-proxy-plugins/actions/workflows/ci.yml)
 [![Releases](https://img.shields.io/badge/Releases-plugin%20bundles-blue?style=flat-square)](https://github.com/huhengbo/codex-proxy-plugins/releases)
 
 [插件目录](#插件目录) · [新增插件](#新增插件) · [本地检查](#本地检查) · [构建与发布](#构建与发布)
@@ -37,7 +37,8 @@ codex-proxy-plugins/
 │   └── package-all
 └── .github/workflows/
     ├── ci.yml
-    └── release.yml
+    ├── release.yml
+    └── sync-sdk.yml
 ~~~
 
 ## 插件目录
@@ -56,7 +57,7 @@ codex-proxy-plugins/
 - 目录名必须与 plugin.json 的 name 一致。
 - 插件 ID 为 publisher.name，仓库内不得重复。
 - plugin.json.version 必须与 backend/Cargo.toml 的 package.version 一致。
-- 每个插件自行固定 gateway-plugin-sdk 的完整 commit SHA，不跟踪 main。
+- 每个插件仍以完整 commit SHA 固定 gateway-plugin-sdk，保证构建可复现；仓库的 `Sync Plugin SDK` workflow 每 6 小时尝试同步到 `codex-proxy-rs/main` 最新 commit。只有全部自定义插件检查通过才会直接提交到本仓库 `main`，不兼容时保留当前 pin。
 - 打包时必须使用与该插件 SDK commit 相同的 cpr-plugin。
 - 插件 README 负责说明权限、宿主兼容范围、使用方式和已知限制。
 - 前端资源统一使用 web/ 包路径。静态页面可以直接放 frontend/；需要构建的前端在 frontend/package.json 中固定 pnpm 版本并提交 lockfile。
@@ -105,7 +106,22 @@ CI 分成两个 Job：
 1. Official example：继续检查上游 examples/workbench，避免 Fork 时把参考实现改坏。
 2. Custom plugins：校验所有插件的目录、ID、版本和 SDK pin，再逐插件执行 Rust fmt、clippy、test；存在前端时自动执行对应前端检查。
 
-CI 同时检查通用脚本语法。后续新增 plugins/<name>/ 后会自动纳入。
+CI 同时检查通用脚本语法。后续新增 plugins/<name>/ 后会自动纳入。日常开发和自动更新均以 `main` 为默认分支。
+
+## SDK 自动同步
+
+仓库会定期尝试把所有自定义插件的 `gateway-plugin-sdk.rev` 更新到 `zyycn/codex-proxy-rs/main` 最新 commit：
+
+~~~text
+Sync Plugin SDK
+  → 读取上游 main HEAD
+  → 更新 plugins/*/backend/Cargo.toml
+  → 运行全部自定义插件检查
+  → 全部通过：直接提交到 main
+  → 任一失败：恢复旧 pin，不修改 main
+~~~
+
+也可以在 GitHub Actions 中手动运行 **Sync Plugin SDK**。本策略追求“最新且可编译”，不会为了追 commit 把主分支更新成不可用状态。
 
 ## 构建安装包
 
@@ -133,7 +149,7 @@ bash scripts/package-all
 .tools/cpr-plugin-<sdk-commit>/
 ~~~
 
-因此同一仓库内的不同插件可以暂时使用不同 SDK commit，不会因为一个插件升级 SDK 而强迫所有插件一起升级。
+打包仍以每个插件 Cargo.toml 中实际固定的 SDK commit 为准；自动同步会统一尝试最新上游 main，但只有在所有插件兼容时才更新主分支。
 
 当前打包目标沿用上游支持范围：
 
@@ -157,7 +173,7 @@ Tag 约定：
 - bundle-preview-2026.09.1：预发行 bundle。
 - 也可以从 Actions 手动运行 Release Plugins，填写已经存在的 tag，并选择是否标记 prerelease。
 
-当前 quota-sync 依赖未合并的 PR #300，所以应使用 bundle-preview-*，不要发布为稳定 bundle。
+当前 quota-sync 依赖未合并的 PR #300，所以应使用 bundle-preview-*，不要发布为稳定 bundle。`Sync Plugin SDK` 会定期尝试最新上游 main；在 #300 尚未进入 main 时兼容性检查会阻止降级到缺少所需接口的 SDK。
 
 宿主从 GitHub Release 安装时选择具体插件对应的 tar.gz asset；仓库里有几个插件不影响单个插件的安装和升级。
 
@@ -180,7 +196,7 @@ bundle-preview-2026.09.1
 
 ## 与上游同步
 
-自己的业务代码只放 plugins/ 和仓库级 scripts / CI。examples/workbench 尽量保持上游原样，这样后续同步官方插件示例时冲突更少。
+自己的业务代码只放 plugins/ 和仓库级 scripts / CI。examples/workbench 尽量保持上游原样，这样后续同步官方插件示例时冲突更少。默认开发分支为 main；不再要求通过长期 custom 分支承载自定义插件。
 
 相关资料：
 
