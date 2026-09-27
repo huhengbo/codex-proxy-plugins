@@ -49,5 +49,6 @@ jobs:
       - run: cargo fmt --manifest-path plugins/quota-sync/backend/Cargo.toml --check
       - run: cargo clippy --manifest-path plugins/quota-sync/backend/Cargo.toml --all-targets --all-features -- -D warnings
       - run: cargo test --manifest-path plugins/quota-sync/backend/Cargo.toml
+      - run: node --check plugins/quota-sync/frontend/app.js
       - run: bash -n scripts/package
       - run: bash -n scripts/package-quota-sync
