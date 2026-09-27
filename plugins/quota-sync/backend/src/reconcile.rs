@@ -40,10 +40,11 @@ pub async fn reconcile(
         };
 
         if !account_facts.enabled {
-            dirty |= set_error(
-                runtime.value.account_mut(&mapping.account_id),
-                "account_disabled",
-            );
+            let account = runtime.value.account_mut(&mapping.account_id);
+            dirty |= account.baseline.take().is_some();
+            dirty |= account.pending.take().is_some();
+            dirty |= account.last_refresh_attempt_ms.take().is_some();
+            dirty |= set_error(account, "account_disabled");
             continue;
         }
 
