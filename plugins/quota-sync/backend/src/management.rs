@@ -1,12 +1,14 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use gateway_plugin_sdk::{
     ErrorCode, PluginFault,
     call::{
-        data::{AccountFacts, AccountFactsQuery, QuotaFacts, QuotaFactsQuery},
+        data::{
+            AccountFacts, AccountFactsQuery, ClientKeyFactsQuery, QuotaFacts, QuotaFactsQuery,
+        },
         host::{ClientKey, KeyListRequest},
         key_budgets::KeyBudget,
         management::{
@@ -22,6 +24,7 @@ use serde_json::json;
 use crate::{
     Config,
     config::validate_mappings,
+    scope::key_scope_allows_account,
     state::{AccountRuntime, LoadedRuntime, ManagedSettings, SyncEvent},
 };
 
@@ -47,6 +50,7 @@ pub fn registration() -> ManagementRegistration {
             get("api/snapshot"),
             post("api/settings"),
             post("api/refresh-account"),
+            post("api/clear-events"),
         ],
         resources: ["web/index.html", "web/app.js", "web/app.css"]
             .into_iter()
@@ -85,8 +89,9 @@ async fn route(
     }
     match (call.request.method.as_str(), call.request.path.as_str()) {
         ("GET", "api/snapshot") => snapshot(config, call).await,
-        ("POST", "api/settings") => save_settings(call).await,
+        ("POST", "api/settings") => save_settings(config, call).await,
         ("POST", "api/refresh-account") => refresh_account(call).await,
+        ("POST", "api/clear-events") => clear_events(call).await,
         _ => Err(ApiError::new(404, "not_found", "未找到插件管理接口")),
     }
 }
@@ -107,6 +112,7 @@ struct SnapshotResponse {
 struct AccountView {
     account_id: String,
     enabled: bool,
+    group_ids: Vec<String>,
     quota: Option<QuotaFacts>,
     runtime: Option<AccountRuntime>,
 }
@@ -117,6 +123,7 @@ struct KeyView {
     id: String,
     name: String,
     enabled: bool,
+    group_ids: Option<Vec<String>>,
     budget: Option<KeyBudget>,
 }
 
@@ -148,6 +155,7 @@ async fn snapshot(
         account_views.push(AccountView {
             account_id: account.account_id,
             enabled: account.enabled,
+            group_ids: account.group_ids,
             quota,
             runtime: state,
         });
@@ -164,6 +172,7 @@ async fn snapshot(
 }
 
 async fn save_settings(
+    config: &Config,
     call: TypedCall<gateway_plugin_sdk::call::management::ManagementRequest>,
 ) -> ApiResult {
     let settings: ManagedSettings =
@@ -172,29 +181,61 @@ async fn save_settings(
 
     let accounts = list_openai_accounts(&call.host)
         .await
-        .map_err(ApiError::from)?;
-    let account_ids = accounts
-        .iter()
-        .map(|account| account.account_id.as_str())
-        .collect::<BTreeSet<_>>();
+        .map_err(ApiError::from)?
+        .into_iter()
+        .map(|account| (account.account_id.clone(), account))
+        .collect::<BTreeMap<_, _>>();
     let keys = list_key_identities(&call.host)
         .await
         .map_err(ApiError::from)?;
-    let key_ids = keys.iter().map(|key| key.id.as_str()).collect::<BTreeSet<_>>();
+    let key_ids = keys
+        .iter()
+        .map(|key| key.id.as_str())
+        .collect::<BTreeSet<_>>();
 
     for mapping in &settings.mappings {
-        if !account_ids.contains(mapping.account_id.as_str()) {
+        let Some(account) = accounts.get(&mapping.account_id) else {
             return Err(ApiError::invalid(format!(
                 "OpenAI 账号不存在：{}",
                 mapping.account_id
             )));
+        };
+
+        for key_id in &mapping.client_key_ids {
+            if !key_ids.contains(key_id.as_str()) {
+                return Err(ApiError::invalid(format!("Client Key 不存在：{key_id}")));
+            }
+            let facts = call
+                .host
+                .key_facts(ClientKeyFactsQuery {
+                    client_key_id: key_id.clone(),
+                })
+                .await
+                .map_err(ApiError::from)?;
+            if !key_scope_allows_account(&facts.group_ids, &account.group_ids) {
+                return Err(ApiError::invalid(format!(
+                    "Client Key {key_id} 当前账号组范围不包含账号 {}",
+                    mapping.account_id
+                )));
+            }
         }
-        if let Some(missing) = mapping
-            .client_key_ids
-            .iter()
-            .find(|key_id| !key_ids.contains(key_id.as_str()))
+
+        if let Some(window_key) = mapping.quota_window_key.as_deref()
+            && let Ok(quota) = call
+                .host
+                .quota_facts(QuotaFactsQuery {
+                    account_id: mapping.account_id.clone(),
+                })
+                .await
+            && !quota.windows.iter().any(|window| {
+                window.key == window_key
+                    && window.window_seconds == Some(config.weekly_window_seconds)
+            })
         {
-            return Err(ApiError::invalid(format!("Client Key 不存在：{missing}")));
+            return Err(ApiError::invalid(format!(
+                "账号 {} 当前不存在指定周窗口：{window_key}",
+                mapping.account_id
+            )));
         }
     }
 
@@ -236,6 +277,22 @@ async fn refresh_account(
         .await
         .map_err(ApiError::from)?;
     json_reply(&quota)
+}
+
+async fn clear_events(
+    call: TypedCall<gateway_plugin_sdk::call::management::ManagementRequest>,
+) -> ApiResult {
+    if !call.payload.is_empty() {
+        return Err(ApiError::invalid("清空事件不接受请求正文"));
+    }
+    let mut runtime = LoadedRuntime::load(&call.host).await.map_err(ApiError::from)?;
+    runtime.value.events.clear();
+    runtime.value.updated_at_ms = now_ms();
+    runtime
+        .save(&call.host)
+        .await
+        .map_err(ApiError::from)?;
+    json_reply(&json!({ "cleared": true }))
 }
 
 async fn list_openai_accounts(host: &HostClient) -> Result<Vec<AccountFacts>, PluginFault> {
@@ -282,6 +339,12 @@ async fn list_keys(host: &HostClient) -> Result<Vec<KeyView>, PluginFault> {
     let keys = list_key_identities(host).await?;
     let mut views = Vec::with_capacity(keys.len());
     for key in keys {
+        let facts = host
+            .key_facts(ClientKeyFactsQuery {
+                client_key_id: key.id.clone(),
+            })
+            .await
+            .ok();
         let budget = host
             .get_key_budget(gateway_plugin_sdk::call::key_budgets::GetKeyBudgetRequest {
                 client_key_id: key.id.clone(),
@@ -291,7 +354,8 @@ async fn list_keys(host: &HostClient) -> Result<Vec<KeyView>, PluginFault> {
         views.push(KeyView {
             id: key.id,
             name: key.name,
-            enabled: key.enabled,
+            enabled: facts.as_ref().map_or(key.enabled, |facts| facts.enabled),
+            group_ids: facts.map(|facts| facts.group_ids),
             budget,
         });
     }
