@@ -1,6 +1,5 @@
 {
-  "tag": "bundle-v2026.09.1",
+  "tag": "bundle-v2026.09.2",
   "prerelease": false,
-  "description": "Stable bundle release for quota-sync 0.3.0",
-  "attempt": 3
+  "description": "Patch release for quota-sync 0.3.1: use classic plugin management scripts"
 }

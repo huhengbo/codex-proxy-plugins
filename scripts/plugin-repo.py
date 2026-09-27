@@ -161,6 +161,18 @@ def validate_one(name: str) -> list[str]:
         if non_web:
             errors.append(f"{name}: 通用打包约定只支持 web/ 资源前缀")
 
+    frontend_index = plugin_dir / "frontend" / "index.html"
+    if frontend_index.is_file():
+        html = frontend_index.read_text(encoding="utf-8")
+        if re.search(
+            r'<script\b[^>]*\btype\s*=\s*["\']module["\']',
+            html,
+            flags=re.IGNORECASE,
+        ):
+            errors.append(
+                f"{name}: 管理页面暂不支持 ES Module，请使用经典 script"
+            )
+
     frontend_package = plugin_dir / "frontend" / "package.json"
     if frontend_package.is_file():
         try:
@@ -278,7 +290,7 @@ def main() -> int:
     if args.command == "meta":
         try:
             print(metadata(args.plugin)[args.field])
-        except (ValueError, json.JSONDecodeError, tomllib.TOMLDecodeError) as exc:
+        except (ValueError, json.JSONDecodeError) as exc:
             print(exc, file=sys.stderr)
             return 1
         return 0
