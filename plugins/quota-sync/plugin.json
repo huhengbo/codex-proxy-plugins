@@ -3,7 +3,7 @@
   "name": "quota-sync",
   "displayName": "额度联动",
   "publisher": "huhengbo",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "监控 OpenAI 账号周额度重置，并同步关联 Client Key 的周额度账本",
   "license": "Apache-2.0",
   "author": "huhengbo",
@@ -13,60 +13,30 @@
   "main": "bin/plugin",
   "runtime": "trustedProcess",
   "contributes": {
-    "maintenance": {}
+    "maintenance": {},
+    "management": {}
   },
   "permissions": [
-    "data"
+    "data",
+    "key_budgets",
+    "quota_observations"
   ],
   "configurationSchema": {
     "type": "object",
     "properties": {
-      "dryRun": {
-        "type": "boolean",
-        "default": true,
-        "description": "仅检测并记录重置事件，不实际重置 Client Key"
-      },
-      "mappings": {
-        "type": "array",
-        "default": [],
-        "maxItems": 100,
-        "description": "OpenAI 账号与需要同步额度的 Client Key 映射",
-        "items": {
-          "type": "object",
-          "required": ["accountId", "clientKeyIds"],
-          "properties": {
-            "accountId": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 256
-            },
-            "clientKeyIds": {
-              "type": "array",
-              "minItems": 1,
-              "maxItems": 64,
-              "uniqueItems": true,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 256
-              }
-            },
-            "quotaWindowKey": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 256,
-              "description": "可选；当同一账号存在多个 7 天窗口时用于明确选择窗口"
-            }
-          },
-          "additionalProperties": false
-        }
-      },
       "weeklyWindowSeconds": {
         "type": "integer",
         "minimum": 1,
         "maximum": 2678400,
         "default": 604800,
         "description": "周额度窗口长度，默认 604800 秒"
+      },
+      "quotaRefreshIntervalSeconds": {
+        "type": "integer",
+        "minimum": 60,
+        "maximum": 86400,
+        "default": 300,
+        "description": "已有额度观测超过该时长时请求宿主主动刷新"
       },
       "maxObservationAgeSeconds": {
         "type": "integer",
@@ -106,6 +76,11 @@
     },
     "additionalProperties": false
   },
+  "resources": {
+    "web/index.html": "text/html",
+    "web/app.js": "text/javascript",
+    "web/app.css": "text/css"
+  },
   "state": [
     {
       "namespace": "quota_sync",
@@ -114,6 +89,9 @@
         "type": "object",
         "required": ["accounts", "events", "updatedAtMs"],
         "properties": {
+          "settings": {
+            "type": "object"
+          },
           "accounts": {
             "type": "array",
             "maxItems": 100,

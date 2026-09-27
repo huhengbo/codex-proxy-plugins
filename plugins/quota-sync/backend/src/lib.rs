@@ -4,6 +4,7 @@ mod app;
 mod config;
 mod detector;
 mod host_calls;
+mod management;
 mod manifest;
 mod reconcile;
 mod reset;

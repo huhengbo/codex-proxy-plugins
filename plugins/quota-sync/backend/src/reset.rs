@@ -1,4 +1,7 @@
-use gateway_plugin_sdk::client::HostClient;
+use gateway_plugin_sdk::{
+    call::key_budgets::{BudgetPeriod, ResetKeyBudgetRequest},
+    client::HostClient,
+};
 
 use crate::state::{KeyResetResult, KeyResetStatus, ResetOutcome};
 
@@ -9,9 +12,8 @@ pub struct ResetExecution {
 
 /// 对一次已确认的周额度重置执行所有关联 Key 的同步动作。
 ///
-/// 当前 SDK 尚未开放已有 Client Key 的预算重置能力，因此非 dry-run 模式会明确记录
-/// `sdk_unavailable`，不会假装重置成功。SDK 增加对应能力后，只需要替换
-/// `reset_one_weekly_key` 的实现。
+/// SDK 明确规定结果未知时不能盲目重试，因此单个 Key 的失败只记录结果；本次检测事件
+/// 仍会推进 baseline，不在下一轮 maintenance 自动重复清零。
 pub async fn reset_weekly_keys(
     host: &HostClient,
     key_ids: &[String],
@@ -37,26 +39,26 @@ pub async fn reset_weekly_keys(
             status: reset_one_weekly_key(host, key_id).await,
         });
     }
-    ResetExecution {
-        outcome: ResetOutcome::SdkUnavailable,
-        keys,
-    }
+    let outcome = if keys
+        .iter()
+        .all(|result| result.status == KeyResetStatus::Reset)
+    {
+        ResetOutcome::Completed
+    } else {
+        ResetOutcome::PartialFailure
+    };
+    ResetExecution { outcome, keys }
 }
 
-/// SDK 适配边界：上游 issue #299 落地后，把这里替换为官方的 weekly budget reset 回调。
-///
-/// 保持这一层只接收宿主 Key ID，不读取 Key 明文，也不要通过 Admin API Key 绕过插件权限体系。
-async fn reset_one_weekly_key(_host: &HostClient, _key_id: &str) -> KeyResetStatus {
-    // TODO(zyycn/codex-proxy-rs#299):
-    // 期望形态示意（实际名称和授权语义以项目方最终 SDK 为准）：
-    //
-    // _host
-    //     .reset_key_budget(KeyBudgetResetRequest {
-    //         key_id: _key_id.to_owned(),
-    //         period: KeyBudgetPeriod::Weekly,
-    //     })
-    //     .await?;
-    //
-    // 在官方合同出现前不发送未知 RPC 方法，避免依赖未冻结的私有协议。
-    KeyResetStatus::SdkUnavailable
+async fn reset_one_weekly_key(host: &HostClient, key_id: &str) -> KeyResetStatus {
+    match host
+        .reset_key_budget(ResetKeyBudgetRequest {
+            client_key_id: key_id.to_owned(),
+            period: BudgetPeriod::Weekly,
+        })
+        .await
+    {
+        Ok(_) => KeyResetStatus::Reset,
+        Err(_) => KeyResetStatus::FailedUnknown,
+    }
 }

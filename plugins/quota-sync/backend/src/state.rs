@@ -5,15 +5,39 @@ use gateway_plugin_sdk::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::host_calls;
+use crate::{config::AccountMapping, host_calls};
 
 const STATE_NAMESPACE: &str = "quota_sync";
 const STATE_KEY: &str = "runtime";
 const MAX_EVENTS: usize = 64;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ManagedSettings {
+    #[serde(default = "default_dry_run")]
+    pub dry_run: bool,
+    #[serde(default)]
+    pub mappings: Vec<AccountMapping>,
+}
+
+impl Default for ManagedSettings {
+    fn default() -> Self {
+        Self {
+            dry_run: true,
+            mappings: Vec::new(),
+        }
+    }
+}
+
+const fn default_dry_run() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RuntimeState {
+    #[serde(default)]
+    pub settings: ManagedSettings,
     #[serde(default)]
     pub accounts: Vec<AccountRuntime>,
     #[serde(default)]
@@ -95,7 +119,8 @@ pub struct SyncEvent {
 #[serde(rename_all = "snake_case")]
 pub enum ResetOutcome {
     DryRun,
-    SdkUnavailable,
+    Completed,
+    PartialFailure,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,7 +134,8 @@ pub struct KeyResetResult {
 #[serde(rename_all = "snake_case")]
 pub enum KeyResetStatus {
     DryRun,
-    SdkUnavailable,
+    Reset,
+    FailedUnknown,
 }
 
 pub struct LoadedRuntime {
@@ -140,9 +166,8 @@ impl LoadedRuntime {
                 version: None,
             });
         };
-        let value = serde_json::from_value(record.value).map_err(|_| {
-            PluginFault::new(ErrorCode::Fault, "quota-sync 私有状态无法解码")
-        })?;
+        let value = serde_json::from_value(record.value)
+            .map_err(|_| PluginFault::new(ErrorCode::Fault, "quota-sync 私有状态无法解码"))?;
         Ok(Self {
             value,
             version: Some(record.version),
@@ -158,9 +183,8 @@ impl LoadedRuntime {
         let request = StatePutRequest {
             namespace: STATE_NAMESPACE.to_owned(),
             key: STATE_KEY.to_owned(),
-            value: serde_json::to_value(&self.value).map_err(|_| {
-                PluginFault::new(ErrorCode::Fault, "quota-sync 私有状态无法编码")
-            })?,
+            value: serde_json::to_value(&self.value)
+                .map_err(|_| PluginFault::new(ErrorCode::Fault, "quota-sync 私有状态无法编码"))?,
             expected_version: self.version,
         };
         let result: StatePutResult = host_calls::metadata(host, "host.state.put", &request)
