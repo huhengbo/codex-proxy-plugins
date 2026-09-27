@@ -45,10 +45,9 @@ codex-proxy-plugins/
 
 | 插件 | 当前版本 | 状态 | 说明 |
 | --- | ---: | --- | --- |
-| [额度联动 / huhengbo.quota-sync](plugins/quota-sync/README.md) | 0.2.0 | 开发中 | 监控 OpenAI 周额度重置，主动刷新额度观测，并同步清零关联 Client Key 的 weekly 已用金额 |
+| [额度联动 / huhengbo.quota-sync](plugins/quota-sync/README.md) | 0.3.0 | 可用 | 监控 OpenAI 周额度重置，主动刷新额度观测，并同步清零关联 Client Key 的 weekly 已用金额 |
 
-> [!IMPORTANT]
-> quota-sync 当前使用上游 [codex-proxy-rs PR #300](https://github.com/zyycn/codex-proxy-rs/pull/300) 新增的 key_budgets 和 quota_observations 合同。PR 尚未合并，当前包只能配合包含该 PR 的宿主构建使用。上游正式发布后，应把插件 SDK/CLI pin 更新到对应 release commit。
+当前 `quota-sync` 最低宿主版本为 `codex-proxy-rs >=3.17.0`，SDK pin 已切到最新主线并由自动同步 workflow 持续维护。
 
 ## 多插件约定
 
@@ -173,7 +172,7 @@ Tag 约定：
 - bundle-preview-2026.09.1：预发行 bundle。
 - 也可以从 Actions 手动运行 Release Plugins，填写已经存在的 tag，并选择是否标记 prerelease。
 
-当前 quota-sync 依赖未合并的 PR #300，所以应使用 bundle-preview-*，不要发布为稳定 bundle。`Sync Plugin SDK` 会定期尝试最新上游 main；在 #300 尚未进入 main 时兼容性检查会阻止降级到缺少所需接口的 SDK。
+quota-sync 所需的 `key_budgets`、`quota_observations` 与 `key_facts` 已进入 codex-proxy-rs v3.17.0；可以按稳定 bundle 发布。`Sync Plugin SDK` 会继续定期追踪上游最新兼容 main。
 
 宿主从 GitHub Release 安装时选择具体插件对应的 tar.gz asset；仓库里有几个插件不影响单个插件的安装和升级。
 
@@ -182,7 +181,7 @@ Tag 约定：
 插件版本由各自 plugin.json 决定，例如：
 
 ~~~text
-huhengbo.quota-sync  0.2.0
+huhengbo.quota-sync  0.3.0
 huhengbo.other       1.4.1
 ~~~
 
