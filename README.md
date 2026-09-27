@@ -3,107 +3,187 @@
 
 <img src="https://raw.githubusercontent.com/zyycn/codex-proxy-rs/main/frontend/public/favicon.svg" alt="Codex Proxy" width="80" height="80" />
 
-# Codex Proxy Plugins
+# Huhengbo · Codex Proxy Plugins
 
-通过可运行的示例，开发你的 Codex Proxy 插件
+基于 zyycn/codex-proxy-plugins 维护的个人 Codex Proxy 插件集合。
 
-[![CI](https://github.com/zyycn/codex-proxy-plugins/actions/workflows/ci.yml/badge.svg)](https://github.com/zyycn/codex-proxy-plugins/actions/workflows/ci.yml)
-[![插件下载](https://img.shields.io/badge/下载-插件安装包-blue?style=flat-square)](https://github.com/zyycn/codex-proxy-plugins/releases)
+[![CI](https://github.com/huhengbo/codex-proxy-plugins/actions/workflows/ci.yml/badge.svg?branch=custom-plugins)](https://github.com/huhengbo/codex-proxy-plugins/actions/workflows/ci.yml)
+[![Releases](https://img.shields.io/badge/Releases-plugin%20bundles-blue?style=flat-square)](https://github.com/huhengbo/codex-proxy-plugins/releases)
 
-[体验插件](#体验插件) · [本地开发](#本地开发) · [构建安装包](#构建安装包) · [文档](#文档)
+[插件目录](#插件目录) · [新增插件](#新增插件) · [本地检查](#本地检查) · [构建与发布](#构建与发布)
 
 </div>
 
-[Codex Proxy RS](https://github.com/zyycn/codex-proxy-rs) 的插件示例仓库。后端使用公开 Rust SDK，页面使用宿主桥与 `@codex-proxy/ui`，可以独立构建和发布。
+## 仓库定位
 
-## 自定义插件
+这个仓库可以同时维护多个独立插件。GitHub 仓库不是插件安装单位：每个 plugins/<name>/plugin.json 定义一个独立插件，最终分别打包成自己的 tar.gz 安装包。
 
-本 Fork 在官方示例之外维护实际使用插件：
+examples/workbench 保留上游官方示例，主要用于查阅 SDK 的能力写法；实际维护的插件统一放在 plugins/。
 
-- [**额度联动（quota-sync）**](plugins/quota-sync/README.md)：监控指定 OpenAI 账号的周额度窗口，主动刷新额度观测，确认重置后同步清零关联 Client Key 的 weekly 已用金额；带管理页面、Dry Run 与事件记录。当前开发版对齐上游 [PR #300](https://github.com/zyycn/codex-proxy-rs/pull/300)。
-- 官方 `examples/workbench` 保持原样，继续作为能力示例；`quota-sync` 当前单独固定到 PR #300 的 SDK commit，待上游合并发布后再切换正式 release。
+~~~text
+codex-proxy-plugins/
+├── examples/
+│   └── workbench/              上游官方示例，尽量保持原样
+├── plugins/
+│   ├── quota-sync/             一个独立插件
+│   │   ├── plugin.json
+│   │   ├── README.md
+│   │   ├── backend/
+│   │   └── frontend/           可选
+│   └── <future-plugin>/        后续插件
+├── scripts/
+│   ├── check-plugins
+│   ├── package-plugin
+│   └── package-all
+└── .github/workflows/
+    ├── ci.yml
+    └── release.yml
+~~~
 
-目前提供一个完整示例：[**插件工作台**](examples/workbench/README.md)。你可以先体验功能，再按需要阅读对应处理器：
+## 插件目录
 
-| 功能 | 可以学到什么 |
-| --- | --- |
-| 基础示例 | 文本大写转换、模型路由、账号调度、请求与用量观察、管理接口 |
-| 接入指南 | 终端命令、自定义客户端认证 |
-| 文本工作台 | 摘要、翻译、改写、网页取文、流式生成、取消、继续调整与保存记录 |
-
-## 体验插件
-
-1. 从 [Releases](https://github.com/zyycn/codex-proxy-plugins/releases) 下载与**宿主运行平台**匹配的 `.tar.gz`，同时下载 `.sha256` 核对摘要。
-2. 在宿主「插件管理」中上传安装包，查看声明的权限并安装。
-3. 启用自动准备的默认配置，从「扩展页」打开「插件工作台」。模型示例需要选择已有的可用 Key 和模型。
+| 插件 | 当前版本 | 状态 | 说明 |
+| --- | ---: | --- | --- |
+| [额度联动 / huhengbo.quota-sync](plugins/quota-sync/README.md) | 0.2.0 | 开发中 | 监控 OpenAI 周额度重置，主动刷新额度观测，并同步清零关联 Client Key 的 weekly 已用金额 |
 
 > [!IMPORTANT]
-> 插件接口仍处于实验阶段，发行包标记为 Pre-release。宿主须支持清单 v1、协议 v1，并满足 `>=3.14.0, <4.0.0`；`3.13.1` 不支持安装。通过 GitHub 来源安装时，需要明确填写发行标签并允许预发行。
+> quota-sync 当前使用上游 [codex-proxy-rs PR #300](https://github.com/zyycn/codex-proxy-rs/pull/300) 新增的 key_budgets 和 quota_observations 合同。PR 尚未合并，当前包只能配合包含该 PR 的宿主构建使用。上游正式发布后，应把插件 SDK/CLI pin 更新到对应 release commit。
 
-工作台声明 `network`、`models`、`requests`、`public_endpoints` 四个访问域。插件进程与宿主使用相同系统身份；运行模型示例会产生真实用量。各能力的触发条件见[示例说明](examples/workbench/README.md#能力与边界)。
+## 多插件约定
 
-## 本地开发
+每个 plugins/<name>/ 都是独立版本单元：
 
-准备 **Rust 1.97、Node.js 24、pnpm 12.6**，然后执行：
+- 目录名必须与 plugin.json 的 name 一致。
+- 插件 ID 为 publisher.name，仓库内不得重复。
+- plugin.json.version 必须与 backend/Cargo.toml 的 package.version 一致。
+- 每个插件自行固定 gateway-plugin-sdk 的完整 commit SHA，不跟踪 main。
+- 打包时必须使用与该插件 SDK commit 相同的 cpr-plugin。
+- 插件 README 负责说明权限、宿主兼容范围、使用方式和已知限制。
+- 前端资源统一使用 web/ 包路径。静态页面可以直接放 frontend/；需要构建的前端在 frontend/package.json 中固定 pnpm 版本并提交 lockfile。
 
-```bash
-git clone https://github.com/zyycn/codex-proxy-plugins.git
-cd codex-proxy-plugins
-pnpm --dir examples/workbench/frontend install --frozen-lockfile
-pnpm --dir examples/workbench/frontend dev
-```
+仓库 Release 使用 bundle 版本，不替代每个插件自己的版本。一个 Release 可以同时包含多个插件和多个平台的安装包，因此某个插件升级时不要求其他插件同步改版本。
 
-独立预览使用模拟宿主，适合阅读页面和调试交互，不调用真实模型。后端由宿主通过标准输入输出启动，实际能力需要构建安装包后验证。
+## 新增插件
 
-```text
-examples/workbench/
-├── plugin.json    插件身份、能力、权限与资源声明
-├── backend/       Rust 处理器与会话测试
-├── frontend/      Vue 页面、宿主桥与独立预览
-└── README.md      按能力阅读源码与接口说明
-scripts/package   构建并打包
-dist/             安装包与校验文件（不入库）
-```
+新增插件时创建：
 
-从 [`app.rs`](examples/workbench/backend/src/app.rs) 查看处理器如何组合，再按[源码导航](examples/workbench/README.md#从哪里读起)选择需要的能力。开发自己的插件时，只保留需要的处理器及对应清单声明。
+~~~text
+plugins/<plugin-name>/
+├── plugin.json
+├── README.md
+├── backend/
+│   ├── Cargo.toml
+│   └── src/
+└── frontend/      可选
+~~~
 
-SDK 固定到提交 `f770ba127d1293bb482921019e61cae7cb3b7de9`，UI 使用 `v0.3.0`，实际依赖由各自锁文件固定；无需检出宿主或组件库。需要联合修改时，使用宿主的[源码联调入口](https://github.com/zyycn/codex-proxy-rs/blob/main/docs/development.md)，正式构建仍使用锁定依赖。
+完成后执行：
 
-在本仓库根目录执行检查：
+~~~bash
+python3 scripts/plugin-repo.py validate
+bash scripts/check-plugin <plugin-name>
+~~~
 
-```bash
-pnpm --dir examples/workbench/frontend lint
-pnpm --dir examples/workbench/frontend build
-cargo fmt --manifest-path examples/workbench/backend/Cargo.toml --check
-RUST_MIN_STACK=16777216 cargo clippy --manifest-path examples/workbench/backend/Cargo.toml --all-targets --all-features --locked -- -D warnings
-RUST_MIN_STACK=16777216 cargo test --manifest-path examples/workbench/backend/Cargo.toml --locked
-```
+仓库脚本会自动发现 plugins/*/plugin.json。只要遵守目录约定，新增插件通常不需要再修改 CI 或 Release workflow。
+
+## 本地检查
+
+查看已发现插件：
+
+~~~bash
+bash scripts/list-plugins
+~~~
+
+检查全部自定义插件：
+
+~~~bash
+bash scripts/check-plugins
+~~~
+
+CI 分成两个 Job：
+
+1. Official example：继续检查上游 examples/workbench，避免 Fork 时把参考实现改坏。
+2. Custom plugins：校验所有插件的目录、ID、版本和 SDK pin，再逐插件执行 Rust fmt、clippy、test；存在前端时自动执行对应前端检查。
+
+CI 同时检查通用脚本语法。后续新增 plugins/<name>/ 后会自动纳入。
 
 ## 构建安装包
 
-安装与 SDK 同一提交的打包工具，在仓库根目录运行：
+构建一个插件：
 
-```bash
-cargo install --locked --git https://github.com/zyycn/codex-proxy-rs.git --rev f770ba127d1293bb482921019e61cae7cb3b7de9 codex-proxy-plugin-cli --root .tools
-PLUGIN_CLI="$PWD/.tools/bin/cpr-plugin" bash scripts/package
-```
+~~~bash
+bash scripts/package-plugin quota-sync
+~~~
 
-脚本构建前后端，在 `dist/` 生成 `.tar.gz` 和 `.sha256`。默认使用本机平台，也可指定目标，例如：
+指定目标平台：
 
-```bash
-PLUGIN_CLI="$PWD/.tools/bin/cpr-plugin" bash scripts/package aarch64-unknown-linux-gnu
-```
+~~~bash
+bash scripts/package-plugin quota-sync aarch64-unknown-linux-gnu
+~~~
 
-支持 Linux x86_64、Linux aarch64、macOS aarch64；交叉构建需准备对应 Rust target 和链接工具。已安装插件使用包内资源，修改源码后需重新构建、打包并切换版本。
+构建全部插件：
 
-发行时同步 `plugin.json` 的版本和 `release/notes.md`，从 `main` 推送对应的 `v<插件版本>` 标签。[发布工作流](.github/workflows/release.yml)在检查通过后生成三个平台的安装包与校验文件。
+~~~bash
+bash scripts/package-all
+~~~
 
-## 文档
+通用打包脚本会从每个插件自己的 backend/Cargo.toml 读取 gateway-plugin-sdk.rev，并自动安装同 commit 的 cpr-plugin，缓存在：
 
-| 任务 | 入口 |
-| --- | --- |
-| 阅读示例与管理接口 | [插件工作台](examples/workbench/README.md) |
-| 安装、配置与管理版本 | [宿主插件使用说明](https://github.com/zyycn/codex-proxy-rs/blob/main/docs/plugins.md) |
-| 编写 Rust 插件 | [SDK](https://github.com/zyycn/codex-proxy-rs/blob/f770ba127d1293bb482921019e61cae7cb3b7de9/backend/crates/gateway-plugin/sdk/README.md) · [清单](https://github.com/zyycn/codex-proxy-rs/blob/f770ba127d1293bb482921019e61cae7cb3b7de9/backend/crates/gateway-plugin/sdk/docs/manifest.md) · [能力合同](https://github.com/zyycn/codex-proxy-rs/blob/f770ba127d1293bb482921019e61cae7cb3b7de9/backend/crates/gateway-plugin/sdk/docs/capabilities.md) |
-| 自定义打包流程 | [插件 CLI](https://github.com/zyycn/codex-proxy-rs/blob/f770ba127d1293bb482921019e61cae7cb3b7de9/backend/apps/plugin-cli/README.md) |
-| 编写管理页面 | [UI 组件库](https://github.com/zyycn/codex-proxy-ui) · [宿主主题约定](https://github.com/zyycn/codex-proxy-rs/blob/main/docs/theme.md) |
+~~~text
+.tools/cpr-plugin-<sdk-commit>/
+~~~
+
+因此同一仓库内的不同插件可以暂时使用不同 SDK commit，不会因为一个插件升级 SDK 而强迫所有插件一起升级。
+
+当前打包目标沿用上游支持范围：
+
+- x86_64-unknown-linux-gnu
+- aarch64-unknown-linux-gnu
+- aarch64-apple-darwin
+
+## 构建与发布
+
+Release Plugins workflow 会自动：
+
+1. 运行完整 CI。
+2. 在 Linux x86_64、Linux arm64、macOS arm64 三个平台执行 scripts/package-all。
+3. 汇总全部插件生成的 tar.gz 和 sha256。
+4. 从当前 plugins/*/plugin.json 自动生成 Release 插件列表。
+5. 创建一个仓库级 bundle Release。
+
+Tag 约定：
+
+- bundle-v2026.09.1：稳定 bundle。
+- bundle-preview-2026.09.1：预发行 bundle。
+- 也可以从 Actions 手动运行 Release Plugins，填写已经存在的 tag，并选择是否标记 prerelease。
+
+当前 quota-sync 依赖未合并的 PR #300，所以应使用 bundle-preview-*，不要发布为稳定 bundle。
+
+宿主从 GitHub Release 安装时选择具体插件对应的 tar.gz asset；仓库里有几个插件不影响单个插件的安装和升级。
+
+## Release 与插件版本
+
+插件版本由各自 plugin.json 决定，例如：
+
+~~~text
+huhengbo.quota-sync  0.2.0
+huhengbo.other       1.4.1
+~~~
+
+bundle tag 是仓库发布批次，例如：
+
+~~~text
+bundle-preview-2026.09.1
+~~~
+
+两者不是同一套版本。Release 可以同时包含不同版本号的多个插件。
+
+## 与上游同步
+
+自己的业务代码只放 plugins/ 和仓库级 scripts / CI。examples/workbench 尽量保持上游原样，这样后续同步官方插件示例时冲突更少。
+
+相关资料：
+
+- [Codex Proxy RS](https://github.com/zyycn/codex-proxy-rs)
+- [官方插件示例仓库](https://github.com/zyycn/codex-proxy-plugins)
+- [插件 SDK 能力说明](https://github.com/zyycn/codex-proxy-rs/blob/main/backend/crates/gateway-plugin/sdk/docs/capabilities.md)
