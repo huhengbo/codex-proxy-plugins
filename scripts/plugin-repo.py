@@ -162,6 +162,37 @@ def validate_all() -> int:
     return 0
 
 
+
+def sync_sdk(rev: str) -> int:
+    if not re.fullmatch(r"[0-9a-f]{40}", rev):
+        print("SDK commit 必须是 40 位小写十六进制 SHA", file=sys.stderr)
+        return 1
+
+    pattern = re.compile(
+        r'(gateway-plugin-sdk\s*=\s*\{[^\n}]*\brev\s*=\s*")[0-9a-f]{40}(")'
+    )
+    changed: list[str] = []
+    for name in plugin_names():
+        cargo_path = PLUGINS / name / "backend" / "Cargo.toml"
+        source = cargo_path.read_text(encoding="utf-8")
+        updated, count = pattern.subn(rf'\g<1>{rev}\g<2>', source)
+        if count != 1:
+            print(
+                f"{name}: gateway-plugin-sdk 必须在一行内且恰好包含一个 rev 字段",
+                file=sys.stderr,
+            )
+            return 1
+        if updated != source:
+            cargo_path.write_text(updated, encoding="utf-8")
+            changed.append(name)
+
+    if changed:
+        print(f"updated SDK to {rev}: {', '.join(changed)}")
+    else:
+        print(f"all plugins already use SDK {rev}")
+    return 0
+
+
 def release_notes() -> None:
     names = plugin_names()
     print("# Codex Proxy Plugins")
@@ -190,6 +221,8 @@ def main() -> int:
         choices=["id", "version", "package", "sdk_rev", "frontend_mode", "resource_mode", "engine", "description"],
     )
     sub.add_parser("release-notes")
+    sync = sub.add_parser("sync-sdk")
+    sync.add_argument("rev")
     args = parser.parse_args()
 
     if args.command == "list":
@@ -208,6 +241,8 @@ def main() -> int:
     if args.command == "release-notes":
         release_notes()
         return 0
+    if args.command == "sync-sdk":
+        return sync_sdk(args.rev)
     return 2
 
 
