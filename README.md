@@ -16,6 +16,13 @@
 
 [Codex Proxy RS](https://github.com/zyycn/codex-proxy-rs) 的插件示例仓库。后端使用公开 Rust SDK，页面使用宿主桥与 `@codex-proxy/ui`，可以独立构建和发布。
 
+## 自定义插件
+
+本 Fork 在官方示例之外维护实际使用插件：
+
+- [**额度联动（quota-sync）**](plugins/quota-sync/README.md)：监控指定 OpenAI 账号的周额度窗口，识别正常重置和提前额度恢复，并为关联 Client Key 预留周额度同步重置。当前默认 Dry Run，实际 Key 重置等待上游 SDK 能力 [zyycn/codex-proxy-rs#299](https://github.com/zyycn/codex-proxy-rs/issues/299)。
+- 官方 `examples/workbench` 保持原样，继续作为能力示例；`quota-sync` 单独固定到 codex-proxy-rs v3.16.0 对应 SDK commit，避免为了新能力直接追踪上游 `main`。
+
 目前提供一个完整示例：[**插件工作台**](examples/workbench/README.md)。你可以先体验功能，再按需要阅读对应处理器：
 
 | 功能 | 可以学到什么 |
