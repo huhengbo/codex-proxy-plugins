@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+plugin_target="${1:-$(rustc -vV | awk '/^host: / {print $2}')}"
+python3 scripts/plugin-repo.py validate
+mkdir -p dist
+while IFS= read -r plugin; do
+  [[ -n "$plugin" ]] || continue
+  bash scripts/package-plugin "$plugin" "$plugin_target"
+done < <(python3 scripts/plugin-repo.py list)

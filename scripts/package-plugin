@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+plugin="${1:?usage: scripts/package-plugin <plugin> [target]}"
+plugin_target="${2:-$(rustc -vV | awk '/^host: / {print $2}')}"
+plugin_dir="plugins/$plugin"
+
+case "$plugin_target" in
+  x86_64-unknown-linux-gnu|aarch64-unknown-linux-gnu|aarch64-apple-darwin) ;;
+  *) echo "不支持的插件目标平台：$plugin_target" >&2; exit 1 ;;
+esac
+
+python3 scripts/plugin-repo.py validate >/dev/null
+package_name="$(python3 scripts/plugin-repo.py meta "$plugin" package)"
+sdk_rev="$(python3 scripts/plugin-repo.py meta "$plugin" sdk_rev)"
+frontend_mode="$(python3 scripts/plugin-repo.py meta "$plugin" frontend_mode)"
+resource_mode="$(python3 scripts/plugin-repo.py meta "$plugin" resource_mode)"
+
+tool_root="$PWD/.tools/cpr-plugin-$sdk_rev"
+plugin_cli="$tool_root/bin/cpr-plugin"
+if [[ ! -x "$plugin_cli" ]]; then
+  echo "==> installing cpr-plugin for SDK $sdk_rev"
+  cargo install --locked \
+    --git https://github.com/zyycn/codex-proxy-rs.git \
+    --rev "$sdk_rev" \
+    codex-proxy-plugin-cli \
+    --root "$tool_root"
+fi
+
+case "$frontend_mode" in
+  pnpm)
+    corepack enable
+    pnpm --dir "$plugin_dir/frontend" install --frozen-lockfile
+    pnpm --dir "$plugin_dir/frontend" run build
+    resource_dir="frontend/dist"
+    ;;
+  static)
+    resource_dir="frontend"
+    ;;
+  none)
+    resource_dir=""
+    ;;
+  *) echo "未知 frontend mode: $frontend_mode" >&2; exit 1 ;;
+esac
+
+echo "==> building $plugin for $plugin_target"
+cargo build --release --target "$plugin_target" --manifest-path "$plugin_dir/backend/Cargo.toml"
+
+args=(
+  package
+  --manifest "$plugin_dir/plugin.json"
+  --binary "$plugin_dir/backend/target/$plugin_target/release/$package_name"
+  --target "$plugin_target"
+  --output-dir dist
+)
+if [[ "$resource_mode" == "web" ]]; then
+  args+=(--resource-map "web=$resource_dir")
+fi
+"$plugin_cli" "${args[@]}"

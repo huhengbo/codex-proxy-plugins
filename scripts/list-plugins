@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-exec bash scripts/package-plugin quota-sync "$@"
+exec python3 scripts/plugin-repo.py list

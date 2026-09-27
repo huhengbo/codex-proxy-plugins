@@ -1,20 +1,27 @@
-name: Release
+name: Release Plugins
 
 on:
   push:
-    tags: ['v*']
+    tags:
+      - 'bundle-v*'
+      - 'bundle-preview-*'
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing plugin version tag to publish
+        description: Existing bundle tag to publish
         required: true
         type: string
+      prerelease:
+        description: Publish as prerelease
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ inputs.tag || github.ref_name }}
+  group: plugin-release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -22,6 +29,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       ref: ${{ inputs.tag || github.ref }}
+
   build:
     needs: check
     strategy:
@@ -35,45 +43,31 @@ jobs:
           - runner: macos-15
             target: aarch64-apple-darwin
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       RUST_MIN_STACK: 16777216
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag || github.ref }}
-      - name: Validate plugin version
-        env:
-          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
-        run: node -e 'const p=require("./examples/workbench/plugin.json"); if(process.env.RELEASE_TAG !== "v"+p.version) throw new Error("Tag must match plugin version")'
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        with:
-          package_json_file: examples/workbench/frontend/package.json
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
-          cache: pnpm
-          cache-dependency-path: examples/workbench/frontend/pnpm-lock.yaml
-      - uses: dtolnay/rust-toolchain@1a3a6d54512beeaffd394f8d516ca16f2c506a20 # 1.97
+      - uses: dtolnay/rust-toolchain@1a3a6d54512bee8d516ca16f2c506a20 # 1.97
         with:
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: examples/workbench/backend -> target
-      - run: pnpm --dir examples/workbench/frontend install --frozen-lockfile
-      - name: Install pinned package tool
-        run: cargo install --locked --git https://github.com/zyycn/codex-proxy-rs.git --rev f770ba127d1293bb482921019e61cae7cb3b7de9 codex-proxy-plugin-cli
-      - name: Build installable package
-        env:
-          PLUGIN_TARGET: ${{ matrix.target }}
-        run: bash scripts/package "$PLUGIN_TARGET"
+      - name: Validate plugin catalog
+        run: python3 scripts/plugin-repo.py validate
+      - name: Build every plugin
+        run: bash scripts/package-all "${{ matrix.target }}"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: plugin-${{ matrix.target }}
+          name: plugins-${{ matrix.target }}
           path: |
             dist/*.tar.gz
             dist/*.sha256
           if-no-files-found: error
+
   publish:
     needs: build
     runs-on: ubuntu-24.04
@@ -85,15 +79,34 @@ jobs:
           ref: ${{ inputs.tag || github.ref }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: plugin-*
+          pattern: plugins-*
           path: dist
           merge-multiple: true
-      - name: Publish plugin preview
+      - name: Generate release notes
+        run: bash scripts/release-notes > dist/RELEASE_NOTES.md
+      - name: Publish bundle
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          MANUAL_PRERELEASE: ${{ inputs.prerelease }}
         run: |
-          gh release create "$RELEASE_TAG" dist/*.tar.gz dist/*.sha256 \
-            --repo "$GITHUB_REPOSITORY" --verify-tag \
-            --title "插件工作台 $RELEASE_TAG" --notes-file release/notes.md \
-            --prerelease --latest=false
+          prerelease=false
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            prerelease="$MANUAL_PRERELEASE"
+          elif [[ "$RELEASE_TAG" == bundle-preview-* ]]; then
+            prerelease=true
+          fi
+
+          args=(
+            release create "$RELEASE_TAG"
+            dist/*.tar.gz dist/*.sha256
+            --repo "$GITHUB_REPOSITORY"
+            --verify-tag
+            --title "Codex Proxy Plugins $RELEASE_TAG"
+            --notes-file dist/RELEASE_NOTES.md
+            --latest=false
+          )
+          if [[ "$prerelease" == "true" ]]; then
+            args+=(--prerelease)
+          fi
+          gh "${args[@]}"

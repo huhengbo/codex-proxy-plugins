@@ -15,9 +15,10 @@ permissions:
   contents: read
 
 jobs:
-  check:
+  official-example:
+    name: Official example
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 20
     env:
       RUST_MIN_STACK: 16777216
     steps:
@@ -32,23 +33,40 @@ jobs:
           node-version: '24'
           cache: pnpm
           cache-dependency-path: examples/workbench/frontend/pnpm-lock.yaml
-      - uses: dtolnay/rust-toolchain@1a3a6d54512beeaffd394f8d516ca16f2c506a20 # 1.97
+      - uses: dtolnay/rust-toolchain@1a3a6d54512bee8d516ca16f2c506a20 # 1.97
         with:
           components: rustfmt,clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          workspaces: |
-            examples/workbench/backend -> target
-            plugins/quota-sync/backend -> target
+          workspaces: examples/workbench/backend -> target
       - run: pnpm --dir examples/workbench/frontend install --frozen-lockfile
       - run: pnpm --dir examples/workbench/frontend lint
       - run: pnpm --dir examples/workbench/frontend build
       - run: cargo fmt --manifest-path examples/workbench/backend/Cargo.toml --check
       - run: cargo clippy --manifest-path examples/workbench/backend/Cargo.toml --all-targets --all-features --locked -- -D warnings
       - run: cargo test --manifest-path examples/workbench/backend/Cargo.toml --locked
-      - run: cargo fmt --manifest-path plugins/quota-sync/backend/Cargo.toml --check
-      - run: cargo clippy --manifest-path plugins/quota-sync/backend/Cargo.toml --all-targets --all-features -- -D warnings
-      - run: cargo test --manifest-path plugins/quota-sync/backend/Cargo.toml
-      - run: node --check plugins/quota-sync/frontend/app.js
       - run: bash -n scripts/package
-      - run: bash -n scripts/package-quota-sync
+
+  plugins:
+    name: Custom plugins
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      RUST_MIN_STACK: 16777216
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+      - uses: dtolnay/rust-toolchain@1a3a6d54512bee8d516ca16f2c506a20 # 1.97
+        with:
+          components: rustfmt,clippy
+      - name: Validate repository scripts
+        run: |
+          python3 -m py_compile scripts/plugin-repo.py
+          bash -n scripts/list-plugins scripts/check-plugin scripts/check-plugins
+          bash -n scripts/package-plugin scripts/package-all scripts/package-quota-sync scripts/release-notes
+      - name: Check all custom plugins
+        run: bash scripts/check-plugins
