@@ -1,0 +1,29 @@
+[package]
+name = "codex-proxy-plugin-quota-sync"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+rust-version = "1.97"
+
+[dependencies]
+gateway-plugin-sdk = { git = "https://github.com/zyycn/codex-proxy-rs.git", rev = "0534dd8f2679e6f2d08a4f6df1b79abc5cbd4716", features = ["io"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+tokio = { version = "1.52.3", default-features = false, features = ["io-std", "macros", "rt", "sync", "time"] }
+
+[lints.rust]
+warnings = "deny"
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = 10 }
+redundant_clone = { level = "deny", priority = 9 }
+needless_collect = { level = "deny", priority = 8 }
+
+[profile.release]
+debug = false
+strip = "symbols"
+lto = "thin"
+codegen-units = 1
+panic = "abort"
