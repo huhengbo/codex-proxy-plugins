@@ -72,7 +72,7 @@ pub async fn reconcile(
             continue;
         };
         let execution =
-            reset::reset_weekly_keys(&call.host, &mapping.client_key_ids, config.dry_run);
+            reset::reset_weekly_keys(&call.host, &mapping.client_key_ids, config.dry_run).await;
         let event_id = event_id(&mapping.account_id, confirmed.kind, &confirmed.after);
         runtime.value.push_event(SyncEvent {
             id: event_id,
