@@ -1,5 +1,5 @@
 {
-  "tag": "bundle-v2026.09.3",
+  "tag": "bundle-v2026.09.4",
   "prerelease": false,
-  "description": "Patch release for quota-sync 0.3.2: localized Chinese settings titles"
+  "description": "Patch release for quota-sync 0.3.3: mobile responsive management UI"
 }
