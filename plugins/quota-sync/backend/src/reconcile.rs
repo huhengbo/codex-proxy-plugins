@@ -47,7 +47,7 @@ pub async fn reconcile(
             &call,
             &mapping.account_id,
             config,
-            now_ms,
+            current_now_ms,
             has_pending,
             last_refresh_attempt_ms,
         )
@@ -63,7 +63,7 @@ pub async fn reconcile(
             runtime
                 .value
                 .account_mut(&mapping.account_id)
-                .last_refresh_attempt_ms = Some(now_ms);
+                .last_refresh_attempt_ms = Some(current_now_ms);
             dirty = true;
         }
 
@@ -96,7 +96,7 @@ pub async fn reconcile(
             event_id.clone(),
             mapping.account_id.clone(),
             &confirmed,
-            now_ms,
+            current_now_ms,
             &mapping.client_key_ids,
         ));
         runtime.value.updated_at_ms = current_now_ms;
