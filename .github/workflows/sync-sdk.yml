@@ -51,12 +51,29 @@ jobs:
           SDK_REV: ${{ steps.upstream.outputs.sdk_rev }}
         run: |
           python3 scripts/plugin-repo.py sync-sdk "$SDK_REV"
+
+          sdk_changed=false
+          if ! git diff --quiet -- 'plugins/*/backend/Cargo.toml'; then
+            sdk_changed=true
+          fi
+
+          lock_missing=false
           while IFS= read -r plugin; do
             [[ -n "$plugin" ]] || continue
-            cargo generate-lockfile --manifest-path "plugins/$plugin/backend/Cargo.toml"
+            if [[ ! -f "plugins/$plugin/backend/Cargo.lock" ]]; then
+              lock_missing=true
+            fi
           done < <(python3 scripts/plugin-repo.py list)
 
-          if git diff --quiet -- 'plugins/*/backend/Cargo.toml' 'plugins/*/backend/Cargo.lock'              && [[ -z "$(git ls-files --others --exclude-standard 'plugins/*/backend/Cargo.lock')" ]]; then
+          if [[ "$sdk_changed" == "true" || "$lock_missing" == "true" ]]; then
+            while IFS= read -r plugin; do
+              [[ -n "$plugin" ]] || continue
+              cargo generate-lockfile --manifest-path "plugins/$plugin/backend/Cargo.toml"
+            done < <(python3 scripts/plugin-repo.py list)
+          fi
+
+          if git diff --quiet -- 'plugins/*/backend/Cargo.toml' 'plugins/*/backend/Cargo.lock' \
+             && [[ -z "$(git ls-files --others --exclude-standard 'plugins/*/backend/Cargo.lock')" ]]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
