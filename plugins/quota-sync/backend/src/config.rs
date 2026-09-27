@@ -50,7 +50,10 @@ impl Config {
     pub fn validate(&self) -> Result<(), String> {
         for (name, value) in [
             ("weeklyWindowSeconds", self.weekly_window_seconds),
-            ("quotaRefreshIntervalSeconds", self.quota_refresh_interval_seconds),
+            (
+                "quotaRefreshIntervalSeconds",
+                self.quota_refresh_interval_seconds,
+            ),
             (
                 "confirmationRefreshIntervalSeconds",
                 self.confirmation_refresh_interval_seconds,
@@ -64,7 +67,10 @@ impl Config {
         for (name, value) in [
             ("earlyResetDropPercent", self.early_reset_drop_percent),
             ("postResetMaxUsedPercent", self.post_reset_max_used_percent),
-            ("confirmationGrowthPercent", self.confirmation_growth_percent),
+            (
+                "confirmationGrowthPercent",
+                self.confirmation_growth_percent,
+            ),
         ] {
             if !value.is_finite() || !(0.0..=100.0).contains(&value) {
                 return Err(format!("{name} 必须在 0 到 100 之间"));
@@ -146,11 +152,13 @@ mod tests {
 
     #[test]
     fn one_key_cannot_follow_multiple_accounts() {
-        assert!(validate_mappings(&[
-            mapping("acct_a", "key_shared"),
-            mapping("acct_b", "key_shared"),
-        ])
-        .is_err());
+        assert!(
+            validate_mappings(&[
+                mapping("acct_a", "key_shared"),
+                mapping("acct_b", "key_shared"),
+            ])
+            .is_err()
+        );
     }
 
     #[test]
