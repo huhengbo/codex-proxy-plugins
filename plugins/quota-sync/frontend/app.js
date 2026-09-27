@@ -163,7 +163,7 @@ function renderWindowPicker(account) {
 function renderKeys() {
   const root = $('#keys')
   const account = snapshot.accounts.find(item => item.accountId === selectedAccountId)
-  $('#refresh-account').disabled = !account
+  $('#refresh-account').disabled = !account || !account.enabled
   if (!account) {
     $('#selected-account').textContent = '尚未选择账号'
     $('#window-picker').hidden = true
