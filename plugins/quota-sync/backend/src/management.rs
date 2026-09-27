@@ -220,22 +220,35 @@ async fn save_settings(
             }
         }
 
-        if let Some(window_key) = mapping.quota_window_key.as_deref()
-            && let Ok(quota) = call
-                .host
-                .quota_facts(QuotaFactsQuery {
-                    account_id: mapping.account_id.clone(),
-                })
-                .await
-            && !quota.windows.iter().any(|window| {
-                window.key == window_key
-                    && window.window_seconds == Some(config.weekly_window_seconds)
+        if let Ok(quota) = call
+            .host
+            .quota_facts(QuotaFactsQuery {
+                account_id: mapping.account_id.clone(),
             })
+            .await
         {
-            return Err(ApiError::invalid(format!(
-                "账号 {} 当前不存在指定周窗口：{window_key}",
-                mapping.account_id
-            )));
+            let weekly_windows = quota
+                .windows
+                .iter()
+                .filter(|window| window.window_seconds == Some(config.weekly_window_seconds))
+                .collect::<Vec<_>>();
+            match mapping.quota_window_key.as_deref() {
+                Some(window_key)
+                    if !weekly_windows.iter().any(|window| window.key == window_key) =>
+                {
+                    return Err(ApiError::invalid(format!(
+                        "账号 {} 当前不存在指定周窗口：{window_key}",
+                        mapping.account_id
+                    )));
+                }
+                None if weekly_windows.len() > 1 => {
+                    return Err(ApiError::invalid(format!(
+                        "账号 {} 当前存在多个周额度窗口，请先选择 quota window",
+                        mapping.account_id
+                    )));
+                }
+                _ => {}
+            }
         }
     }
 
