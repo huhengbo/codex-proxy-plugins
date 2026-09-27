@@ -1,5 +1,6 @@
 {
   "tag": "bundle-v2026.09.1",
   "prerelease": false,
-  "description": "Stable bundle release for quota-sync 0.3.0"
+  "description": "Stable bundle release for quota-sync 0.3.0",
+  "attempt": 2
 }

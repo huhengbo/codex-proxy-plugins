@@ -61,7 +61,7 @@ jobs:
             fi
           else
             tag="$(jq -er '.tag' release/request.json)"
-            prerelease="$(jq -er '.prerelease // false' release/request.json)"
+            prerelease="$(jq -r '.prerelease // false' release/request.json)"
             ref="$GITHUB_SHA"
             target_sha="$GITHUB_SHA"
           fi
