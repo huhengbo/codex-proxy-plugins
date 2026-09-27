@@ -144,6 +144,7 @@ def validate_all() -> int:
         return 1
     errors: list[str] = []
     ids: dict[str, str] = {}
+    sdk_revs: dict[str, list[str]] = {}
     for name in names:
         errors.extend(validate_one(name))
         try:
@@ -151,10 +152,14 @@ def validate_all() -> int:
         except Exception:
             continue
         plugin_id = meta["id"]
+        sdk_revs.setdefault(meta["sdk_rev"], []).append(name)
         if plugin_id in ids:
             errors.append(f"{name}: 插件 ID {plugin_id} 与 {ids[plugin_id]} 重复")
         else:
             ids[plugin_id] = name
+    if len(sdk_revs) > 1:
+        details = ", ".join(f"{rev[:12]}: {'/'.join(names)}" for rev, names in sorted(sdk_revs.items()))
+        errors.append(f"所有自定义插件必须使用同一 SDK commit；当前为 {details}")
     if errors:
         print("\n".join(f"- {error}" for error in errors), file=sys.stderr)
         return 1
