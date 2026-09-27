@@ -165,11 +165,11 @@ async fn current_quota(
         if let Ok(fresh) = call.host.refresh_account_quota(query).await {
             return Ok((fresh, true));
         }
-        return cached
-            .map(|quota| (quota, true))
-            .ok_or("quota_unavailable");
+        return cached.map(|quota| (quota, true)).ok_or("quota_unavailable");
     }
-    cached.map(|quota| (quota, false)).ok_or("quota_unavailable")
+    cached
+        .map(|quota| (quota, false))
+        .ok_or("quota_unavailable")
 }
 
 async fn openai_accounts(
@@ -234,7 +234,10 @@ fn weekly_snapshot(
     snapshot(window, observed_at_ms)
 }
 
-fn snapshot(window: &QuotaWindowFacts, observed_at_ms: i64) -> Result<WindowSnapshot, &'static str> {
+fn snapshot(
+    window: &QuotaWindowFacts,
+    observed_at_ms: i64,
+) -> Result<WindowSnapshot, &'static str> {
     let used_percent = window.used_percent.ok_or("weekly_used_percent_unknown")?;
     if !used_percent.is_finite() || !(0.0..=100.0).contains(&used_percent) {
         return Err("weekly_used_percent_invalid");
