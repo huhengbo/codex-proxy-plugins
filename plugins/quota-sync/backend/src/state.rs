@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::host_calls;
 
-pub const STATE_NAMESPACE: &str = "quota_sync";
+const STATE_NAMESPACE: &str = "quota_sync";
 const STATE_KEY: &str = "runtime";
 const MAX_EVENTS: usize = 64;
 
@@ -189,7 +189,7 @@ impl RuntimeState {
         self.events.push(event);
         if self.events.len() > MAX_EVENTS {
             let overflow = self.events.len() - MAX_EVENTS;
-            self.events.drain(..overflow);
+            drop(self.events.drain(..overflow));
         }
     }
 }
