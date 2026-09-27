@@ -1,12 +1,12 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use gateway_plugin_sdk::{
     PluginFault,
     call::{
-        data::{AccountFactsQuery, QuotaFacts, QuotaFactsQuery, QuotaWindowFacts},
+        data::{AccountFacts, AccountFactsQuery, QuotaFacts, QuotaFactsQuery, QuotaWindowFacts},
         host::{LogLevel, LogRequest},
     },
     client::{Empty, TypedCall, TypedReply},
@@ -28,24 +28,44 @@ pub async fn reconcile(
     let dry_run = runtime.value.settings.dry_run;
     let mut dirty = prune_removed_accounts(&mut runtime.value, &mappings);
     let now_ms = now_ms();
-    let openai_accounts = openai_account_ids(&call).await?;
+    let openai_accounts = openai_accounts(&call).await?;
 
     for mapping in &mappings {
-        if !openai_accounts.contains(mapping.account_id.as_str()) {
+        let Some(account_facts) = openai_accounts.get(&mapping.account_id) else {
             dirty |= set_error(
                 runtime.value.account_mut(&mapping.account_id),
                 "openai_account_not_found",
             );
             continue;
-        }
+        };
 
-        let quota = match current_quota(&call, &mapping.account_id, config, now_ms).await {
+        let (has_pending, last_refresh_attempt_ms) = {
+            let account = runtime.value.account_mut(&mapping.account_id);
+            (account.pending.is_some(), account.last_refresh_attempt_ms)
+        };
+        let (quota, refresh_attempted) = match current_quota(
+            &call,
+            &mapping.account_id,
+            config,
+            now_ms,
+            has_pending,
+            last_refresh_attempt_ms,
+        )
+        .await
+        {
             Ok(value) => value,
             Err(code) => {
                 dirty |= set_error(runtime.value.account_mut(&mapping.account_id), code);
                 continue;
             }
         };
+        if refresh_attempted {
+            runtime
+                .value
+                .account_mut(&mapping.account_id)
+                .last_refresh_attempt_ms = Some(now_ms);
+            dirty = true;
+        }
 
         let current = match weekly_snapshot(&quota, mapping, config, now_ms) {
             Ok(value) => value,
@@ -65,27 +85,52 @@ pub async fn reconcile(
         let Some(confirmed) = observation.confirmed else {
             continue;
         };
-        let execution =
-            reset::reset_weekly_keys(&call.host, &mapping.client_key_ids, dry_run).await;
         let event_id = event_id(&mapping.account_id, confirmed.kind, &confirmed.after);
-        runtime.value.push_event(SyncEvent {
-            id: event_id,
-            account_id: mapping.account_id.clone(),
-            kind: confirmed.kind,
-            detected_at_ms: now_ms,
-            previous_used_percent: confirmed.before.used_percent,
-            current_used_percent: confirmed.after.used_percent,
-            previous_reset_at_ms: confirmed.before.reset_at_ms,
-            current_reset_at_ms: confirmed.after.reset_at_ms,
-            outcome: execution.outcome,
-            keys: execution.keys,
-        });
-        dirty = true;
+        if runtime.value.contains_event(&event_id) {
+            continue;
+        }
+
+        // 先持久化 detector 已推进的 baseline 和 reset 意图，再执行任何 Key 写操作。
+        // 这样即使进程在 reset 成功后、结果状态写回前退出，下一轮也不会自动重复清零。
+        runtime.value.push_event(SyncEvent::prepared(
+            event_id.clone(),
+            mapping.account_id.clone(),
+            &confirmed,
+            now_ms,
+            &mapping.client_key_ids,
+        ));
+        runtime.value.updated_at_ms = now_ms;
+        runtime.save(&call.host).await?;
+        dirty = false;
+
         log_reset(&call, mapping, confirmed.kind, dry_run).await;
+
+        if dry_run {
+            runtime
+                .value
+                .event_mut(&event_id)
+                .expect("prepared event must exist")
+                .set_all_dry_run();
+            runtime.value.updated_at_ms = now_ms();
+            runtime.save(&call.host).await?;
+            continue;
+        }
+
+        for key_id in &mapping.client_key_ids {
+            let status =
+                reset::reset_weekly_key(&call.host, &account_facts.group_ids, key_id).await;
+            runtime
+                .value
+                .event_mut(&event_id)
+                .expect("prepared event must exist")
+                .set_key_status(key_id, status);
+            runtime.value.updated_at_ms = now_ms();
+            runtime.save(&call.host).await?;
+        }
     }
 
     if dirty {
-        runtime.value.updated_at_ms = now_ms;
+        runtime.value.updated_at_ms = now_ms();
         runtime.save(&call.host).await?;
     }
     Ok(TypedReply::new(Empty {}))
@@ -96,28 +141,42 @@ async fn current_quota(
     account_id: &str,
     config: &Config,
     now_ms: i64,
-) -> Result<QuotaFacts, &'static str> {
+    has_pending: bool,
+    last_refresh_attempt_ms: Option<i64>,
+) -> Result<(QuotaFacts, bool), &'static str> {
     let query = QuotaFactsQuery {
         account_id: account_id.to_owned(),
     };
     let cached = call.host.quota_facts(query.clone()).await.ok();
-    let refresh_due = cached.as_ref().is_none_or(|quota| {
+
+    let normal_refresh_due = cached.as_ref().is_none_or(|quota| {
         quota.observed_at_ms.is_none_or(|observed_at| {
             now_ms.saturating_sub(observed_at) >= millis(config.quota_refresh_interval_seconds)
         })
     });
+    let confirmation_refresh_due = has_pending
+        && last_refresh_attempt_ms.is_none_or(|last_attempt| {
+            now_ms.saturating_sub(last_attempt)
+                >= millis(config.confirmation_refresh_interval_seconds)
+        });
+    let refresh_due = normal_refresh_due || confirmation_refresh_due;
 
-    if refresh_due
-        && let Ok(fresh) = call.host.refresh_account_quota(query).await
-    {
-        return Ok(fresh);
+    if refresh_due {
+        if let Ok(fresh) = call.host.refresh_account_quota(query).await {
+            return Ok((fresh, true));
+        }
+        return cached
+            .map(|quota| (quota, true))
+            .ok_or("quota_unavailable");
     }
-    cached.ok_or("quota_unavailable")
+    cached.map(|quota| (quota, false)).ok_or("quota_unavailable")
 }
 
-async fn openai_account_ids(call: &TypedCall<Empty>) -> Result<BTreeSet<String>, PluginFault> {
+async fn openai_accounts(
+    call: &TypedCall<Empty>,
+) -> Result<BTreeMap<String, AccountFacts>, PluginFault> {
     let mut cursor = None;
-    let mut accounts = BTreeSet::new();
+    let mut accounts = BTreeMap::new();
     loop {
         let page = call
             .host
@@ -127,7 +186,9 @@ async fn openai_account_ids(call: &TypedCall<Empty>) -> Result<BTreeSet<String>,
                 limit: 200,
             })
             .await?;
-        accounts.extend(page.accounts.into_iter().map(|account| account.account_id));
+        for account in page.accounts {
+            accounts.insert(account.account_id.clone(), account);
+        }
         let Some(next) = page.next_cursor else {
             break;
         };
