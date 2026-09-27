@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, custom-plugins]
   pull_request:
   workflow_call:
     inputs:
@@ -16,7 +16,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       RUST_MIN_STACK: 16777216
     steps:
@@ -36,11 +36,17 @@ jobs:
           components: rustfmt,clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          workspaces: examples/workbench/backend -> target
+          workspaces: |
+            examples/workbench/backend -> target
+            plugins/quota-sync/backend -> target
       - run: pnpm --dir examples/workbench/frontend install --frozen-lockfile
       - run: pnpm --dir examples/workbench/frontend lint
       - run: pnpm --dir examples/workbench/frontend build
       - run: cargo fmt --manifest-path examples/workbench/backend/Cargo.toml --check
       - run: cargo clippy --manifest-path examples/workbench/backend/Cargo.toml --all-targets --all-features --locked -- -D warnings
       - run: cargo test --manifest-path examples/workbench/backend/Cargo.toml --locked
+      - run: cargo fmt --manifest-path plugins/quota-sync/backend/Cargo.toml --check
+      - run: cargo clippy --manifest-path plugins/quota-sync/backend/Cargo.toml --all-targets --all-features -- -D warnings
+      - run: cargo test --manifest-path plugins/quota-sync/backend/Cargo.toml
       - run: bash -n scripts/package
+      - run: bash -n scripts/package-quota-sync
