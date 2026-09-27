@@ -50,7 +50,7 @@ jobs:
   plugins:
     name: Custom plugins
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 60
     env:
       RUST_MIN_STACK: 16777216
     steps:
@@ -70,3 +70,8 @@ jobs:
           bash -n scripts/package-plugin scripts/package-all scripts/package-quota-sync scripts/release-notes
       - name: Check all custom plugins
         run: bash scripts/check-plugins
+      - name: Package smoke test
+        run: |
+          bash scripts/package-all x86_64-unknown-linux-gnu
+          test -n "$(find dist -maxdepth 1 -name '*.tar.gz' -print -quit)"
+          test -n "$(find dist -maxdepth 1 -name '*.sha256' -print -quit)"
