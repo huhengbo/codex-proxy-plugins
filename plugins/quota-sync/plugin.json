@@ -3,7 +3,7 @@
   "name": "quota-sync",
   "displayName": "额度联动",
   "publisher": "huhengbo",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "监控 OpenAI 账号周额度重置，并安全同步关联 Client Key 的周额度账本",
   "license": "Apache-2.0",
   "author": "huhengbo",

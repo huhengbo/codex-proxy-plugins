@@ -175,7 +175,7 @@ async fn save_settings(
     config: &Config,
     call: TypedCall<gateway_plugin_sdk::call::management::ManagementRequest>,
 ) -> ApiResult {
-    let settings: ManagedSettings = serde_json::from_slice(&call.payload)
+    let mut settings: ManagedSettings = serde_json::from_slice(&call.payload)
         .map_err(|_| ApiError::invalid("设置不是合法 JSON"))?;
     validate_mappings(&settings.mappings).map_err(ApiError::invalid)?;
 
@@ -192,6 +192,20 @@ async fn save_settings(
         .iter()
         .map(|key| key.id.as_str())
         .collect::<BTreeSet<_>>();
+
+    settings.account_aliases.retain(|account_id, alias| {
+        accounts.contains_key(account_id)
+            && !alias.trim().is_empty()
+    });
+    for (account_id, alias) in &mut settings.account_aliases {
+        let value = alias.trim();
+        if value.len() > 120 || value.chars().any(char::is_control) {
+            return Err(ApiError::invalid(format!(
+                "账号 {account_id} 的本地名称必须在 120 字符以内且不能包含控制字符"
+            )));
+        }
+        *alias = value.to_owned();
+    }
 
     for mapping in &settings.mappings {
         let Some(account) = accounts.get(&mapping.account_id) else {

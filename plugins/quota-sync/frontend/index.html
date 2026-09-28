@@ -41,6 +41,11 @@
             <p id="selected-account">尚未选择账号</p>
           </div>
         </div>
+        <div id="account-alias-editor" class="alias-editor" hidden>
+          <label for="account-alias">账号名称（本地别名）</label>
+          <input id="account-alias" type="text" maxlength="120" placeholder="例如：主账号 / 活动号 A">
+          <p>仅保存在 quota-sync 插件中；宿主 SDK 当前未向插件暴露账号名称。</p>
+        </div>
         <div id="window-picker" class="window-picker" hidden></div>
         <div id="keys" class="key-list empty">请选择左侧账号</div>
       </div>

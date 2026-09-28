@@ -43,6 +43,14 @@ function ownerOfKey(keyId) {
   return draft.mappings.find(item => item.clientKeyIds.includes(keyId))?.accountId || null
 }
 
+function accountAlias(accountId) {
+  return draft.accountAliases?.[accountId]?.trim() || ''
+}
+
+function accountDisplayName(accountId) {
+  return accountAlias(accountId) || accountId
+}
+
 function weeklyWindows(account) {
   return (account.quota?.windows || [])
     .filter(window => window.window_seconds === snapshot.weeklyWindowSeconds)
@@ -88,8 +96,9 @@ function renderAccounts() {
     const top = document.createElement('div')
     top.className = 'row'
     const id = document.createElement('strong')
-    id.className = 'mono'
-    id.textContent = account.accountId
+    const alias = accountAlias(account.accountId)
+    id.className = alias ? '' : 'mono'
+    id.textContent = accountDisplayName(account.accountId)
     const badge = document.createElement('span')
     badge.className = 'badge'
     badge.textContent = `${map?.clientKeyIds.length || 0} 个 Key`
@@ -98,6 +107,12 @@ function renderAccounts() {
     const meta = document.createElement('div')
     meta.className = 'meta'
     const weekly = windows[0]
+    if (alias) {
+      const accountId = document.createElement('span')
+      accountId.className = 'mono'
+      accountId.textContent = `账号 ID：${account.accountId}`
+      meta.append(accountId)
+    }
     const usage = document.createElement('span')
     usage.textContent = `周用量：${weekly ? fmtPercent(weekly.used_percent) : '无数据'}`
     const reset = document.createElement('span')
@@ -166,12 +181,20 @@ function renderKeys() {
   $('#refresh-account').disabled = !account || !account.enabled
   if (!account) {
     $('#selected-account').textContent = '尚未选择账号'
+    $('#account-alias-editor').hidden = true
     $('#window-picker').hidden = true
     root.className = 'key-list empty'
     root.textContent = '请选择左侧账号'
     return
   }
-  $('#selected-account').textContent = account.accountId
+  const aliasEditor = $('#account-alias-editor')
+  const aliasInput = $('#account-alias')
+  aliasEditor.hidden = false
+  aliasInput.value = accountAlias(account.accountId)
+  const alias = accountAlias(account.accountId)
+  $('#selected-account').textContent = alias
+    ? `${alias} · ${account.accountId}`
+    : account.accountId
   renderWindowPicker(account)
   root.replaceChildren()
   root.className = 'key-list'
@@ -292,7 +315,8 @@ function renderEvents() {
     const top = document.createElement('div')
     top.className = 'row'
     const title = document.createElement('strong')
-    title.textContent = event.accountId
+    const alias = accountAlias(event.accountId)
+    title.textContent = accountDisplayName(event.accountId)
     const outcome = document.createElement('span')
     const problem = event.outcome === 'partial_failure' || event.outcome === 'prepared'
     outcome.className = `badge${problem ? ' error' : event.outcome === 'completed' ? ' success' : ''}`
@@ -301,7 +325,7 @@ function renderEvents() {
 
     const meta = document.createElement('div')
     meta.className = 'meta'
-    meta.textContent = `${fmtTime(event.detectedAtMs)} · ${event.kind} · ${fmtPercent(event.previousUsedPercent)} → ${fmtPercent(event.currentUsedPercent)}`
+    meta.textContent = `${alias ? `ID ${event.accountId} · ` : ''}${fmtTime(event.detectedAtMs)} · ${event.kind} · ${fmtPercent(event.previousUsedPercent)} → ${fmtPercent(event.currentUsedPercent)}`
 
     const keys = document.createElement('div')
     keys.className = 'event-keys'
@@ -328,6 +352,7 @@ async function load() {
   try {
     snapshot = await api('GET', 'api/snapshot')
     draft = structuredClone(snapshot.settings)
+    draft.accountAliases ||= {}
     if (!selectedAccountId || !snapshot.accounts.some(item => item.accountId === selectedAccountId))
       selectedAccountId = snapshot.accounts[0]?.accountId || null
     render()
@@ -343,6 +368,22 @@ $('#dry-run').addEventListener('change', event => {
 
 $('#reload').addEventListener('click', load)
 
+$('#account-alias').addEventListener('input', event => {
+  if (!selectedAccountId)
+    return
+  draft.accountAliases ||= {}
+  const value = event.target.value
+  if (value.trim())
+    draft.accountAliases[selectedAccountId] = value
+  else
+    delete draft.accountAliases[selectedAccountId]
+  renderAccounts()
+  const alias = accountAlias(selectedAccountId)
+  $('#selected-account').textContent = alias
+    ? `${alias} · ${selectedAccountId}`
+    : selectedAccountId
+})
+
 $('#save').addEventListener('click', async () => {
   notice('')
   const mappings = draft.mappings
@@ -353,7 +394,16 @@ $('#save').addEventListener('click', async () => {
       ...(item.quotaWindowKey ? { quotaWindowKey: item.quotaWindowKey } : {}),
     }))
   try {
-    await api('POST', 'api/settings', { dryRun: draft.dryRun, mappings })
+    const accountAliases = Object.fromEntries(
+      Object.entries(draft.accountAliases || {})
+        .map(([accountId, alias]) => [accountId, alias.trim()])
+        .filter(([, alias]) => alias.length > 0),
+    )
+    await api('POST', 'api/settings', {
+      dryRun: draft.dryRun,
+      mappings,
+      accountAliases,
+    })
     notice('设置已保存。维护任务会在下一轮按新映射执行。')
     await load()
   }

@@ -18,6 +18,8 @@ pub struct ManagedSettings {
     pub dry_run: bool,
     #[serde(default)]
     pub mappings: Vec<AccountMapping>,
+    #[serde(default)]
+    pub account_aliases: BTreeMap<String, String>,
 }
 
 impl Default for ManagedSettings {
@@ -25,6 +27,7 @@ impl Default for ManagedSettings {
         Self {
             dry_run: true,
             mappings: Vec::new(),
+            account_aliases: BTreeMap::new(),
         }
     }
 }
