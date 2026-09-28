@@ -193,10 +193,9 @@ async fn save_settings(
         .map(|key| key.id.as_str())
         .collect::<BTreeSet<_>>();
 
-    settings.account_aliases.retain(|account_id, alias| {
-        accounts.contains_key(account_id)
-            && !alias.trim().is_empty()
-    });
+    settings
+        .account_aliases
+        .retain(|account_id, alias| accounts.contains_key(account_id) && !alias.trim().is_empty());
     for (account_id, alias) in &mut settings.account_aliases {
         let value = alias.trim();
         if value.len() > 120 || value.chars().any(char::is_control) {

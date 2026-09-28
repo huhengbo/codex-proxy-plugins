@@ -308,7 +308,8 @@ impl RuntimeState {
 #[cfg(test)]
 mod tests {
     use super::{
-        ConfirmedReset, KeyResetStatus, ResetKind, ResetOutcome, SyncEvent, WindowSnapshot,
+        ConfirmedReset, KeyResetStatus, ManagedSettings, ResetKind, ResetOutcome, SyncEvent,
+        WindowSnapshot,
     };
 
     fn snapshot(observed_at_ms: i64, used_percent: f64) -> WindowSnapshot {
@@ -318,6 +319,16 @@ mod tests {
             used_percent,
             reset_at_ms: Some(10_000),
         }
+    }
+
+    #[test]
+    fn managed_settings_should_accept_legacy_state_without_aliases() {
+        let settings: ManagedSettings = serde_json::from_value(serde_json::json!({
+            "dryRun": true,
+            "mappings": []
+        }))
+        .expect("legacy settings should deserialize");
+        assert!(settings.account_aliases.is_empty());
     }
 
     #[test]
