@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use gateway_plugin_sdk::{
     ErrorCode, PluginFault,
     call::host::{StateGetRequest, StateGetResult, StatePutRequest, StatePutResult},
